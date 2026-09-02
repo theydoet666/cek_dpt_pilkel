@@ -1,0 +1,139 @@
+-- =========================================================
+-- SYSTEM PENGECEKAN DPT DESA BELEGA - SUPABASE SQL SCHEMA
+-- =========================================================
+
+-- 1. TABEL LOKASI TPS (TPS 7, TPS 8, TPS 9)
+create table if not exists public.tps (
+  id            uuid primary key default gen_random_uuid(),
+  nomor_tps     int not null unique,
+  nama_lokasi   text not null,
+  alamat_lokasi text,
+  dusun         text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+-- Seed Data TPS Belega (TPS 7, 8, 9)
+insert into public.tps (nomor_tps, nama_lokasi, alamat_lokasi, dusun)
+values
+  (7, 'Balai Banjar Jasri', 'Banjar Jasri, Desa Belega, Kec. Blahbatuh', 'Br. Jasri'),
+  (8, 'Balai Banjar Kebon', 'Banjar Kebon, Desa Belega, Kec. Blahbatuh', 'Br. Kebon'),
+  (9, 'Balai Banjar Belega', 'Banjar Belega, Desa Belega, Kec. Blahbatuh', 'Br. Belega & Kompleks BTN')
+on conflict (nomor_tps) do update set
+  nama_lokasi = excluded.nama_lokasi,
+  alamat_lokasi = excluded.alamat_lokasi,
+  dusun = excluded.dusun;
+
+-- 2. TABEL LOG UPLOAD BATCH
+create table if not exists public.upload_batches (
+  id            uuid primary key default gen_random_uuid(),
+  file_name     text not null,
+  uploaded_by   uuid references auth.users(id),
+  total_rows    int default 0,
+  valid_rows    int default 0,
+  error_rows    int default 0,
+  mode          text check (mode in ('upsert','replace')) default 'upsert',
+  status        text check (status in ('processing','success','failed')) default 'processing',
+  notes         text,
+  created_at    timestamptz not null default now()
+);
+
+-- 3. TABEL UTAMA: PEMILIH (DPT)
+create table if not exists public.pemilih (
+  id               uuid primary key default gen_random_uuid(),
+  no_urut          int,
+  kecamatan        text default 'BLAHBATUH',
+  kelurahan        text default 'BELEGA',
+  nkk              text,
+  nik              text not null,
+  nama             text not null,
+  tempat_lahir     text,
+  tanggal_lahir    date,
+  status_kawin     text,
+  jenis_kelamin    text check (jenis_kelamin in ('L','P')),
+  alamat           text,
+  kategori_pemilih text, -- LOKAL, BTN, BTN KG, TK
+  tps_id           uuid references public.tps(id),
+  tps_nomor        int not null default 7,
+  status_dpt       text check (status_dpt in ('DPS','LOLOS','TIDAK_LOLOS','BARU')) default 'LOLOS',
+  is_active        boolean not null default true,
+  upload_batch_id  uuid references public.upload_batches(id),
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+
+  constraint uq_nik unique (nik)
+);
+
+-- Indexing untuk kecepatan pencarian
+create index if not exists idx_pemilih_nama on public.pemilih using gin (to_tsvector('simple', nama));
+create index if not exists idx_pemilih_nik  on public.pemilih (nik);
+create index if not exists idx_pemilih_tps  on public.pemilih (tps_nomor);
+
+-- 4. TABEL PROFIL ADMIN
+create table if not exists public.admin_profiles (
+  id          uuid primary key references auth.users(id) on delete cascade,
+  nama        text,
+  role        text check (role in ('admin','super_admin')) default 'admin',
+  created_at  timestamptz not null default now()
+);
+
+-- 5. ROW LEVEL SECURITY (RLS)
+alter table public.pemilih enable row level security;
+alter table public.tps enable row level security;
+alter table public.upload_batches enable row level security;
+alter table public.admin_profiles enable row level security;
+
+-- Policy RLS TPS: Publik boleh baca info lokasi TPS
+create policy "public_read_tps" on public.tps
+  for select using (true);
+
+-- Policy RLS Pemilih (Admin Authenticated): Full Akses
+create policy "admin_all_pemilih" on public.pemilih
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "admin_all_tps" on public.tps
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "admin_all_batches" on public.upload_batches
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+-- 6. FUNGSI PENCARIAN PUBLIK (RPC DEFINER - MEMBATASI KOLOM & MENYAMARKAN NIK)
+create or replace function public.search_pemilih(q text)
+returns table (
+  nama            text,
+  nik_tersamar    text,
+  alamat          text,
+  tps_nomor       int,
+  tps_lokasi      text,
+  status_dpt      text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select
+    p.nama,
+    concat(left(p.nik, 4), '********', right(p.nik, 4)) as nik_tersamar,
+    p.alamat,
+    p.tps_nomor,
+    coalesce(t.nama_lokasi, concat('Balai Banjar / Lokasi TPS ', p.tps_nomor)) as tps_lokasi,
+    p.status_dpt
+  from public.pemilih p
+  left join public.tps t on t.nomor_tps = p.tps_nomor
+  where p.is_active = true
+    and (
+      (q ~ '^[0-9]{16}$' and p.nik = q)
+      or
+      (q !~ '^[0-9]{16}$' and p.nama ilike '%' || trim(q) || '%')
+    )
+  limit 20;
+end;
+$$;
+
+-- Grant execution ke role anonim
+grant execute on function public.search_pemilih(text) to anon;
