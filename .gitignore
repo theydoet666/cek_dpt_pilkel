@@ -7,13 +7,23 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies and Build
 node_modules
 dist
 dist-ssr
 *.local
-.env
 
-# Editor directories and files
+# Environment & Secrets (Security Protection)
+.env
+.env.*
+!.env.example
+
+# Raw Data Spreadsheets (UU PDP Data Protection)
+*.xlsx
+*.xls
+*.csv
+
+# Editor & OS files
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -23,3 +33,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+scratch/
