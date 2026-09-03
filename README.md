@@ -1,32 +1,17 @@
-# React + TypeScript + Vite
+# Cek DPT Online - Pemilihan Perbekel Desa Belega 2026
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Sistem Pengecekan Daftar Pemilih Tetap (DPT) berbasis Web & Supabase untuk Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar.
 
-Currently, two official plugins are available:
+## Fitur Utama
+- **Pencarian Publik DPT**: Cek lokasi TPS mencoblos berdasarkan NIK / NIK Tersamar atau Nama Pemilih.
+- **Perlindungan Data Pribadi (UU PDP)**: NIK disamarkan secara otomatis di halaman publik.
+- **Panel Admin Panitia**:
+  - Authentikasi Admin via Supabase Auth.
+  - Upload Rekap DPT via Excel (`.xlsx`) dengan deteksi header otomatis dan pengolahan batch.
+  - Kelola Data Pemilih (CRUD Pemilih & Hapus Semua Data DPT).
+  - Kelola Data TPS (CRUD Lokasi TPS).
+  - Pengaturan Branding & Upload Logo / Favicon Web secara langsung.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Teknologi
+- **Frontend**: React, TypeScript, Vite, TailwindCSS, Lucide Icons
+- **Backend & Database**: Supabase (PostgreSQL, Auth, REST API, RPC Definer)
