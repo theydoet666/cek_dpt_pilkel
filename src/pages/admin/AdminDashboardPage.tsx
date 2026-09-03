@@ -43,14 +43,50 @@ export const AdminDashboardPage: React.FC = () => {
         ]);
         setPemilihCounts({ 7: 485, 8: 512, 9: 545 });
       } else {
-        // 1. Fetch all TPS from database
-        const { data: tpsData, error: tpsErr } = await supabase
-          .from('tps')
-          .select('*')
-          .order('nomor_tps', { ascending: true });
+        // 1. Fetch TPS and Counts via RPC get_tps_summary (fast & accurate)
+        let loadedTps = false;
+        try {
+          const { data: summaryData, error: summaryErr } = await supabase.rpc('get_tps_summary');
+          if (!summaryErr && summaryData && summaryData.length > 0) {
+            setTpsList(summaryData);
+            const counts: Record<number, number> = {};
+            summaryData.forEach((item: any) => {
+              counts[item.nomor_tps] = Number(item.total_pemilih) || 0;
+            });
+            setPemilihCounts(counts);
+            loadedTps = true;
+          }
+        } catch {
+          // fallback to table query
+        }
 
-        if (tpsErr) throw tpsErr;
-        setTpsList(tpsData || []);
+        if (!loadedTps) {
+          // Fallback: Fetch all TPS from table
+          const { data: tpsData, error: tpsErr } = await supabase
+            .from('tps')
+            .select('*')
+            .order('nomor_tps', { ascending: true });
+
+          if (tpsErr) throw tpsErr;
+          setTpsList(tpsData || []);
+
+          // Fetch all active voters with tps_nomor
+          const { data: votersData } = await supabase
+            .from('pemilih')
+            .select('tps_nomor')
+            .eq('is_active', true)
+            .range(0, 50000);
+
+          if (votersData) {
+            const counts: Record<number, number> = {};
+            votersData.forEach((row: any) => {
+              if (row.tps_nomor !== null && row.tps_nomor !== undefined) {
+                counts[row.tps_nomor] = (counts[row.tps_nomor] || 0) + 1;
+              }
+            });
+            setPemilihCounts(counts);
+          }
+        }
 
         // 2. Exact count of total active voters
         const { count: totalCount } = await supabase
@@ -74,23 +110,6 @@ export const AdminDashboardPage: React.FC = () => {
           .eq('is_active', true)
           .eq('jenis_kelamin', 'P');
         setTotalPerempuan(femaleCount || 0);
-
-        // 5. Fetch all active voters with tps_nomor (supporting large datasets)
-        const { data: votersData } = await supabase
-          .from('pemilih')
-          .select('tps_nomor')
-          .eq('is_active', true)
-          .range(0, 50000);
-
-        if (votersData) {
-          const counts: Record<number, number> = {};
-          votersData.forEach((row: any) => {
-            if (row.tps_nomor !== null && row.tps_nomor !== undefined) {
-              counts[row.tps_nomor] = (counts[row.tps_nomor] || 0) + 1;
-            }
-          });
-          setPemilihCounts(counts);
-        }
 
         // 6. Fetch latest upload batch
         const { data: batchData } = await supabase

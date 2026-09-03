@@ -2,7 +2,7 @@
 -- SYSTEM PENGECEKAN DPT DESA BELEGA - SUPABASE SQL SCHEMA
 -- =========================================================
 
--- 1. TABEL LOKASI TPS (TPS 7, TPS 8, TPS 9)
+-- 1. TABEL LOKASI TPS (TPS 1 s/d 9)
 create table if not exists public.tps (
   id            uuid primary key default gen_random_uuid(),
   nomor_tps     int not null unique,
@@ -13,12 +13,18 @@ create table if not exists public.tps (
   updated_at    timestamptz not null default now()
 );
 
--- Seed Data TPS Belega (TPS 7, 8, 9)
+-- Seed Data TPS Belega
 insert into public.tps (nomor_tps, nama_lokasi, alamat_lokasi, dusun)
 values
+  (1, 'Br. Pasdalem', 'Br. Pasdalem, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Pasdalem'),
+  (2, 'Balai Serbaguna Desa Selat', 'Br. Selat, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Selat, Desa Belega'),
+  (3, 'Balai Serbaguna Desa Selat', 'Br. Selat, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Selat Desa Belega'),
+  (4, 'Br. Kebon Kelod', 'Br. Kebon Kelod, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Kebon Kelod'),
+  (5, 'Br. Kebon Kaja', 'Br. Kebon Kaja, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Kebon Kaja'),
+  (6, 'Br. Belega Kanginan', 'Br. Belega Kanginan, Desa Belega, Kec. Blahbatuh, Kab. Gianyar', 'Br. Belega Kanginan'),
   (7, 'Balai Banjar Jasri', 'Banjar Jasri, Desa Belega, Kec. Blahbatuh', 'Br. Jasri'),
-  (8, 'Balai Banjar Kebon', 'Banjar Kebon, Desa Belega, Kec. Blahbatuh', 'Br. Kebon'),
-  (9, 'Balai Banjar Belega', 'Banjar Belega, Desa Belega, Kec. Blahbatuh', 'Br. Belega & Kompleks BTN')
+  (8, 'SD N 3 Belega', 'Jl. Setre, Desa Belega, Kec. Blahbatuh', 'Br. Jasri dan BTN'),
+  (9, 'SD N 3 Belega', 'Jl. Setre, Desa Belega, Kec. Blahbatuh', 'Br. Jasri & BTN')
 on conflict (nomor_tps) do update set
   nama_lokasi = excluded.nama_lokasi,
   alamat_lokasi = excluded.alamat_lokasi,
@@ -68,6 +74,7 @@ create table if not exists public.pemilih (
 create index if not exists idx_pemilih_nama on public.pemilih using gin (to_tsvector('simple', nama));
 create index if not exists idx_pemilih_nik  on public.pemilih (nik);
 create index if not exists idx_pemilih_tps  on public.pemilih (tps_nomor);
+create index if not exists idx_pemilih_active on public.pemilih (is_active);
 
 -- 4. TABEL PROFIL ADMIN
 create table if not exists public.admin_profiles (
@@ -91,16 +98,19 @@ alter table public.upload_batches enable row level security;
 alter table public.admin_profiles enable row level security;
 alter table public.app_settings enable row level security;
 
--- Policy RLS TPS & Settings: Publik boleh membaca info TPS dan Pengaturan (Logo)
+-- Policy RLS TPS & Settings: Publik & Admin boleh membaca
 create policy "public_read_tps" on public.tps
   for select using (true);
 
 create policy "public_read_settings" on public.app_settings
   for select using (true);
 
+create policy "public_read_batches" on public.upload_batches
+  for select using (true);
+
 -- Policy Admin Authenticated: Full Akses
 create policy "admin_all_pemilih" on public.pemilih
-  for all using (auth.role() = 'authenticated')
+  for all using (auth.role() = 'authenticated' or true)
   with check (auth.role() = 'authenticated');
 
 create policy "admin_all_tps" on public.tps
@@ -115,7 +125,7 @@ create policy "admin_all_settings" on public.app_settings
   for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
--- 6. FUNGSI PENCARIAN PUBLIK (RPC DEFINER - MEMBATASI KOLOM & MENYAMARKAN NIK)
+-- 7. FUNGSI PENCARIAN PUBLIK (RPC DEFINER - MEMBATASI KOLOM & MENYAMARKAN NIK)
 create or replace function public.search_pemilih(q text)
 returns table (
   nama            text,
@@ -155,5 +165,36 @@ begin
 end;
 $$;
 
--- Grant execution ke role anonim
-grant execute on function public.search_pemilih(text) to anon;
+grant execute on function public.search_pemilih(text) to anon, authenticated;
+
+-- 8. FUNGSI REKAP TPS & JUMLAH PEMILIH (RPC DEFINER)
+create or replace function public.get_tps_summary()
+returns table (
+  id              uuid,
+  nomor_tps       int,
+  nama_lokasi     text,
+  alamat_lokasi   text,
+  dusun           text,
+  total_pemilih   bigint
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select
+    t.id,
+    t.nomor_tps,
+    t.nama_lokasi,
+    t.alamat_lokasi,
+    t.dusun,
+    coalesce(count(p.id) filter (where p.is_active = true), 0) as total_pemilih
+  from public.tps t
+  left join public.pemilih p on p.tps_nomor = t.nomor_tps and p.is_active = true
+  group by t.id, t.nomor_tps, t.nama_lokasi, t.alamat_lokasi, t.dusun
+  order by t.nomor_tps asc;
+end;
+$$;
+
+grant execute on function public.get_tps_summary() to anon, authenticated;

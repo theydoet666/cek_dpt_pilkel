@@ -61,38 +61,61 @@ export const AdminTpsPage: React.FC = () => {
         setPemilihCounts({ 7: 420, 8: 380, 9: 510 });
         setExactTotalPemilih(1310);
       } else {
-        // Fetch all TPS from Supabase ordered by nomor_tps
-        const { data: tpsData, error: tpsErr } = await supabase
-          .from('tps')
-          .select('*')
-          .order('nomor_tps', { ascending: true });
+        // 1. Fetch TPS & Counts via RPC get_tps_summary
+        let loadedTps = false;
+        try {
+          const { data: summaryData, error: summaryErr } = await supabase.rpc('get_tps_summary');
+          if (!summaryErr && summaryData && summaryData.length > 0) {
+            setTpsList(summaryData);
+            const counts: Record<number, number> = {};
+            let total = 0;
+            summaryData.forEach((item: any) => {
+              const c = Number(item.total_pemilih) || 0;
+              counts[item.nomor_tps] = c;
+              total += c;
+            });
+            setPemilihCounts(counts);
+            setExactTotalPemilih(total);
+            loadedTps = true;
+          }
+        } catch {
+          // fallback to table query
+        }
 
-        if (tpsErr) throw tpsErr;
-        setTpsList(tpsData || []);
+        if (!loadedTps) {
+          // Fallback: Fetch all TPS from Supabase ordered by nomor_tps
+          const { data: tpsData, error: tpsErr } = await supabase
+            .from('tps')
+            .select('*')
+            .order('nomor_tps', { ascending: true });
 
-        // Exact total active voters count
-        const { count: totalCount } = await supabase
-          .from('pemilih')
-          .select('*', { count: 'exact', head: true })
-          .eq('is_active', true);
+          if (tpsErr) throw tpsErr;
+          setTpsList(tpsData || []);
 
-        setExactTotalPemilih(totalCount || 0);
+          // Exact total active voters count
+          const { count: totalCount } = await supabase
+            .from('pemilih')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_active', true);
 
-        // Fetch counts per TPS (range up to 50,000 voters)
-        const { data: pemilihData } = await supabase
-          .from('pemilih')
-          .select('tps_nomor')
-          .eq('is_active', true)
-          .range(0, 50000);
+          setExactTotalPemilih(totalCount || 0);
 
-        if (pemilihData) {
-          const counts: Record<number, number> = {};
-          pemilihData.forEach((p: any) => {
-            if (p.tps_nomor !== null && p.tps_nomor !== undefined) {
-              counts[p.tps_nomor] = (counts[p.tps_nomor] || 0) + 1;
-            }
-          });
-          setPemilihCounts(counts);
+          // Fetch counts per TPS (range up to 50,000 voters)
+          const { data: pemilihData } = await supabase
+            .from('pemilih')
+            .select('tps_nomor')
+            .eq('is_active', true)
+            .range(0, 50000);
+
+          if (pemilihData) {
+            const counts: Record<number, number> = {};
+            pemilihData.forEach((p: any) => {
+              if (p.tps_nomor !== null && p.tps_nomor !== undefined) {
+                counts[p.tps_nomor] = (counts[p.tps_nomor] || 0) + 1;
+              }
+            });
+            setPemilihCounts(counts);
+          }
         }
       }
     } catch (err: any) {
