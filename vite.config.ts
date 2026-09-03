@@ -11,4 +11,9 @@ export default defineConfig({
   optimizeDeps: {
     include: ['read-excel-file/browser'],
   },
+  server: {
+    watch: {
+      ignored: ['**/*.zip', '**/dist/**'],
+    },
+  },
 });
