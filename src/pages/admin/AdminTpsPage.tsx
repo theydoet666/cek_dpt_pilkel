@@ -49,6 +49,8 @@ export const AdminTpsPage: React.FC = () => {
     dusun: '',
   });
 
+  const [exactTotalPemilih, setExactTotalPemilih] = useState<number>(0);
+
   const fetchTpsData = async () => {
     setLoading(true);
     try {
@@ -57,26 +59,38 @@ export const AdminTpsPage: React.FC = () => {
       if (isPlaceholder) {
         setTpsList(INITIAL_TPS);
         setPemilihCounts({ 7: 420, 8: 380, 9: 510 });
+        setExactTotalPemilih(1310);
       } else {
-        // Fetch TPS from Supabase
+        // Fetch all TPS from Supabase ordered by nomor_tps
         const { data: tpsData, error: tpsErr } = await supabase
           .from('tps')
           .select('*')
           .order('nomor_tps', { ascending: true });
 
         if (tpsErr) throw tpsErr;
-        setTpsList(tpsData || INITIAL_TPS);
+        setTpsList(tpsData || []);
 
-        // Fetch counts per TPS
+        // Exact total active voters count
+        const { count: totalCount } = await supabase
+          .from('pemilih')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_active', true);
+
+        setExactTotalPemilih(totalCount || 0);
+
+        // Fetch counts per TPS (range up to 50,000 voters)
         const { data: pemilihData } = await supabase
           .from('pemilih')
           .select('tps_nomor')
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .range(0, 50000);
 
         if (pemilihData) {
           const counts: Record<number, number> = {};
-          pemilihData.forEach((p) => {
-            counts[p.tps_nomor] = (counts[p.tps_nomor] || 0) + 1;
+          pemilihData.forEach((p: any) => {
+            if (p.tps_nomor !== null && p.tps_nomor !== undefined) {
+              counts[p.tps_nomor] = (counts[p.tps_nomor] || 0) + 1;
+            }
           });
           setPemilihCounts(counts);
         }
@@ -212,7 +226,7 @@ export const AdminTpsPage: React.FC = () => {
     }
   };
 
-  const totalPemilih = Object.values(pemilihCounts).reduce((acc, count) => acc + count, 0);
+  const totalPemilih = exactTotalPemilih || Object.values(pemilihCounts).reduce((acc, count) => acc + count, 0);
 
   return (
     <AdminLayout title="Kelola Tempat Pemungutan Suara (TPS)">
