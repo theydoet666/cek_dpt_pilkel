@@ -1,5 +1,8 @@
-import ExcelJS from 'exceljs';
+// @ts-ignore
+import ExcelJSModule from 'exceljs/dist/exceljs.min.js';
 import type { ExcelParseResult, ParsedRow, Pemilih } from './types';
+
+const ExcelJS = (ExcelJSModule && ExcelJSModule.Workbook) ? ExcelJSModule : (ExcelJSModule?.default || ExcelJSModule);
 
 /**
  * Ekstrak nilai sel murni dari ExcelJS CellValue (menangani rich text, formula result, date, dsb)
@@ -98,7 +101,8 @@ function cleanNik(val: any): string {
  */
 export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
   const arrayBuffer = await file.arrayBuffer();
-  const workbook = new ExcelJS.Workbook();
+  const WorkbookClass = ExcelJS.Workbook || ExcelJS;
+  const workbook = new WorkbookClass();
   await workbook.xlsx.load(arrayBuffer);
 
   if (!workbook.worksheets || workbook.worksheets.length === 0) {
@@ -107,7 +111,7 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
 
   // Cari sheet "Lolos" atau sheet pertama yang berisi data
   let worksheet = workbook.worksheets.find(
-    (ws) =>
+    (ws: any) =>
       ws.name.toLowerCase().includes('lolos') ||
       ws.name.toLowerCase().includes('dpt') ||
       ws.name.toLowerCase().includes('pdpb')
@@ -119,7 +123,7 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
 
   // Kumpulkan seluruh baris mentah
   const rawRows: any[][] = [];
-  worksheet.eachRow({ includeEmpty: false }, (row) => {
+  worksheet.eachRow({ includeEmpty: false }, (row: any) => {
     // row.values is 1-based indexed
     const values = Array.isArray(row.values) ? row.values.slice(1) : [];
     rawRows.push(values.map(extractCellValue));
