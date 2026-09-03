@@ -12,17 +12,22 @@ export const AdminSettingsPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Compress & convert file to DataURL
+  // Strict image validation (PNG, JPEG, WEBP - blocking SVG to prevent stored XSS)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('File yang dipilih harus berupa gambar (PNG, JPG, SVG, WEBP).');
+    const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowedExtensions = ['png', 'jpg', 'jpeg', 'webp'];
+
+    if (!allowedMimeTypes.includes(file.type.toLowerCase()) || !allowedExtensions.includes(ext)) {
+      toast.error('Format tidak didukung! Hanya file PNG, JPG, dan WEBP yang diizinkan demi keamanan.');
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ukuran gambar maksimal 5MB.');
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('Ukuran gambar maksimal 3MB.');
       return;
     }
 

@@ -15,8 +15,8 @@ export const ProtectedRoute: React.FC = () => {
     );
   }
 
-  // Jika di mode placeholder demo, izinkan akses langsung untuk preview UI
-  if (isPlaceholder) {
+  // Hanya izinkan bypass di mode LOCAL DEVELOPMENT jika env placeholder disetel sengaja
+  if (import.meta.env.DEV && isPlaceholder) {
     return <Outlet />;
   }
 

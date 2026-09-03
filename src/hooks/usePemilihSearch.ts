@@ -30,6 +30,12 @@ const MOCK_DEMO_RESULTS: SearchResult[] = [
   },
 ];
 
+// Rate limiting tracker (client-side anti-scraping guard)
+let searchTimestamps: number[] = [];
+const RATE_LIMIT_WINDOW_MS = 30000; // 30 detik
+const MAX_REQUESTS_PER_WINDOW = 12; // Maks 12 pencarian per 30 detik
+const MIN_INTERVAL_MS = 600; // Jeda minimal 600ms antar pencarian
+
 export function usePemilihSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +53,25 @@ export function usePemilihSearch() {
       setError('Pencarian berdasarkan nama minimal 3 karakter.');
       return;
     }
+
+    // Rate limiting check
+    const now = Date.now();
+    searchTimestamps = searchTimestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+
+    if (searchTimestamps.length > 0) {
+      const lastTimestamp = searchTimestamps[searchTimestamps.length - 1];
+      if (now - lastTimestamp < MIN_INTERVAL_MS) {
+        // Terlalu cepat, abaikan request beruntun
+        return;
+      }
+    }
+
+    if (searchTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
+      setError('Terlalu banyak permintaan pencarian. Mohon tunggu beberapa detik demi keamanan sistem.');
+      return;
+    }
+
+    searchTimestamps.push(now);
 
     setLoading(true);
     setError(null);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from '../shared/Modal';
 import { Button } from '../shared/Button';
-import { AlertTriangle, Trash2, ShieldAlert } from 'lucide-react';
+import { Trash2, ShieldAlert } from 'lucide-react';
 import clsx from 'clsx';
 
 interface DeleteAllModalProps {
