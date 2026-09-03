@@ -2,13 +2,22 @@ import * as XLSX from 'xlsx';
 import type { ExcelParseResult, ParsedRow, Pemilih } from './types';
 
 /**
- * Format string tanggal dari DD|MM|YYYY atau DD/MM/YYYY atau Excel Serial Date menjadi YYYY-MM-DD
+ * Format Date / Serial / String tanggal dari DD|MM|YYYY atau DD/MM/YYYY atau Date object menjadi YYYY-MM-DD
  */
 function parseDate(val: any): string | null {
-  if (!val) return null;
-  
+  if (val === null || val === undefined || val === '') return null;
+
+  // Handle JS Date object (misal dari XLSX cellDates: true)
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // Handle Excel date number (serial number)
   if (typeof val === 'number') {
-    // Excel date number
     const dateObj = XLSX.SSF.parse_date_code(val);
     if (dateObj) {
       const y = dateObj.y;
@@ -19,27 +28,49 @@ function parseDate(val: any): string | null {
   }
 
   const str = String(val).trim();
+  if (!str) return null;
+
+  // Pattern YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
   // Format DD|MM|YYYY atau DD/MM/YYYY atau DD-MM-YYYY
   const dateParts = str.split(/[|/\-]/);
   if (dateParts.length === 3) {
-    const day = dateParts[0].padStart(2, '0');
-    const month = dateParts[1].padStart(2, '0');
-    let year = dateParts[2];
-    if (year.length === 2) year = '19' + year; // fallback
-    if (day.length === 2 && month.length === 2 && year.length === 4) {
-      return `${year}-${month}-${day}`;
+    const p1 = dateParts[0].padStart(2, '0');
+    const p2 = dateParts[1].padStart(2, '0');
+    let p3 = dateParts[2];
+
+    if (p3.length === 2) p3 = '19' + p3;
+    if (p1.length === 2 && p2.length === 2 && p3.length === 4) {
+      const day = parseInt(p1, 10);
+      const month = parseInt(p2, 10);
+      if (day <= 31 && month <= 12) {
+        return `${p3}-${p2}-${p1}`;
+      }
     }
   }
 
-  return str;
+  // Safe fallback parse Date
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // Return null jika tanggal tidak valid (mencegah kirim string "GMT+0800" ke DB)
+  return null;
 }
 
 /**
- * Bersihkan string NIK (hilangkan bintang/spasi jika ada, pastikan string)
+ * Bersihkan string NIK (pertahankan karakter asterisks jika tersamar, pastikan string)
  */
 function cleanNik(val: any): string {
   if (val === null || val === undefined) return '';
-  return String(val).replace(/[\s\*]/g, '').trim();
+  return String(val).trim();
 }
 
 /**
@@ -149,11 +180,9 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
           const rawJk = String(columnMapping['jenis_kelamin'] !== undefined ? row[columnMapping['jenis_kelamin']] : '').toUpperCase().trim();
           const rawKategori = String(columnMapping['kategori_pemilih'] !== undefined ? row[columnMapping['kategori_pemilih']] : '').trim();
 
-          // Validasi NIK: Harus 16 digit (atau angka tersamar jika sampel)
+          // Validasi NIK: Boleh kurang dari 16 digit atau memiliki karakter tersamar (* / angka)
           if (!rawNik) {
             errors.push('NIK tidak boleh kosong');
-          } else if (!/^\d{16}$/.test(rawNik) && !/^\d{6}\*{6}\d{4}$/.test(rawNik)) {
-            errors.push(`NIK "${rawNik}" tidak valid (harus 16 digit angka)`);
           }
 
           // Validasi Nama

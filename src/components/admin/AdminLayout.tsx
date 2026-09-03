@@ -11,8 +11,10 @@ import {
   X,
   Vote,
   ShieldCheck,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppLogo } from '../../context/LogoContext';
 import clsx from 'clsx';
 
 interface AdminLayoutProps {
@@ -25,6 +27,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { logoUrl } = useAppLogo();
 
   const handleSignOut = async () => {
     await signOut();
@@ -37,6 +40,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
     { label: 'Data Pemilih', path: '/admin/data', icon: <Users className="w-5 h-5" /> },
     { label: 'Kelola TPS', path: '/admin/tps', icon: <Building className="w-5 h-5" /> },
     { label: 'Riwayat Upload', path: '/admin/riwayat', icon: <History className="w-5 h-5" /> },
+    { label: 'Pengaturan Logo', path: '/admin/settings', icon: <ImageIcon className="w-5 h-5" /> },
   ];
 
   return (
@@ -44,7 +48,11 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
       {/* Mobile Top Navbar */}
       <div className="md:hidden bg-slate-900 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md">
         <div className="flex items-center gap-2">
-          <Vote className="w-6 h-6 text-emerald-400" />
+          {logoUrl ? (
+            <img src={logoUrl} alt="Logo" className="w-7 h-7 object-contain rounded-lg bg-white/10 p-0.5" />
+          ) : (
+            <Vote className="w-6 h-6 text-emerald-400" />
+          )}
           <span className="font-bold text-sm">Admin DPT Belega</span>
         </div>
 
@@ -74,9 +82,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
         <div className="p-5 space-y-6">
           {/* Logo & Header */}
           <div className="flex items-center gap-3 pb-4 border-b border-slate-800">
-            <div className="p-2.5 bg-emerald-600 rounded-xl text-white shadow-md">
-              <Vote className="w-6 h-6" />
-            </div>
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-9 h-9 object-contain bg-white/10 rounded-xl p-1 shadow-md" />
+            ) : (
+              <div className="p-2.5 bg-emerald-600 rounded-xl text-white shadow-md">
+                <Vote className="w-6 h-6" />
+              </div>
+            )}
             <div>
               <h2 className="font-bold text-white text-base leading-tight">DPT Belega</h2>
               <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">

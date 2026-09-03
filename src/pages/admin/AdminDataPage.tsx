@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { DataTable } from '../../components/admin/DataTable';
+import { DeleteAllModal } from '../../components/admin/DeleteAllModal';
 import type { Pemilih } from '../../lib/types';
 import { supabase } from '../../lib/supabaseClient';
 import { Modal } from '../../components/shared/Modal';
@@ -65,9 +66,13 @@ export const AdminDataPage: React.FC = () => {
   const [pemilihList, setPemilihList] = useState<Pemilih[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal State
+  // Modal State Tambah / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Pemilih | null>(null);
+
+  // Modal State Hapus Semua Data
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [deleteAllLoading, setDeleteAllLoading] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState<Partial<Pemilih>>({
@@ -158,11 +163,6 @@ export const AdminDataPage: React.FC = () => {
       return;
     }
 
-    if (!/^\d{16}$/.test(formData.nik)) {
-      toast.error('NIK harus tepat 16 digit angka.');
-      return;
-    }
-
     try {
       const isPlaceholder = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder');
 
@@ -231,6 +231,49 @@ export const AdminDataPage: React.FC = () => {
     }
   };
 
+  const handleDeleteAllData = async (mode: 'hard' | 'soft') => {
+    setDeleteAllLoading(true);
+    try {
+      const isPlaceholder = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder');
+
+      if (isPlaceholder) {
+        setPemilihList([]);
+        toast.success(
+          mode === 'hard'
+            ? 'Seluruh data DPT berhasil dihapus permanen (Demo Mode).'
+            : 'Seluruh data DPT berhasil dinonaktifkan (Demo Mode).'
+        );
+      } else {
+        if (mode === 'soft') {
+          // Soft delete all active records
+          const { error } = await supabase
+            .from('pemilih')
+            .update({ is_active: false })
+            .eq('is_active', true);
+
+          if (error) throw error;
+          toast.success('Seluruh data DPT berhasil dinonaktifkan.');
+        } else {
+          // Hard delete all records
+          const { error } = await supabase
+            .from('pemilih')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+
+          if (error) throw error;
+          toast.success('Seluruh data DPT berhasil dihapus permanen dari database.');
+        }
+        fetchPemilih();
+      }
+      setIsDeleteAllModalOpen(false);
+    } catch (err: any) {
+      console.error('Delete all error:', err);
+      toast.error(err.message || 'Gagal menghapus seluruh data DPT.');
+    } finally {
+      setDeleteAllLoading(false);
+    }
+  };
+
   return (
     <AdminLayout title="Kelola Data Pemilih (DPT)">
       <div className="space-y-6">
@@ -240,6 +283,16 @@ export const AdminDataPage: React.FC = () => {
           onAddClick={handleOpenAddModal}
           onEditClick={handleOpenEditModal}
           onDeleteClick={handleDelete}
+          onDeleteAllClick={() => setIsDeleteAllModalOpen(true)}
+        />
+
+        {/* Modal Hapus Semua Data DPT */}
+        <DeleteAllModal
+          isOpen={isDeleteAllModalOpen}
+          onClose={() => setIsDeleteAllModalOpen(false)}
+          onConfirmDelete={handleDeleteAllData}
+          totalCount={pemilihList.length}
+          loading={deleteAllLoading}
         />
 
         {/* Modal Form Tambah / Edit Pemilih */}
@@ -253,13 +306,13 @@ export const AdminDataPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 block">
-                  NIK (16 Digit) *
+                  NIK *
                 </label>
                 <input
                   type="text"
-                  maxLength={16}
+                  maxLength={30}
                   value={formData.nik || ''}
-                  onChange={(e) => setFormData({ ...formData, nik: e.target.value.replace(/\D/g, '') })}
+                  onChange={(e) => setFormData({ ...formData, nik: e.target.value.trim() })}
                   placeholder="510402..."
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 font-mono"
                   required

@@ -7,6 +7,7 @@ import { AdminUploadPage } from '../pages/admin/AdminUploadPage';
 import { AdminDataPage } from '../pages/admin/AdminDataPage';
 import { AdminTpsPage } from '../pages/admin/AdminTpsPage';
 import { AdminHistoryPage } from '../pages/admin/AdminHistoryPage';
+import { AdminSettingsPage } from '../pages/admin/AdminSettingsPage';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const AppRouter: React.FC = () => {
@@ -27,6 +28,7 @@ export const AppRouter: React.FC = () => {
           <Route path="/admin/data" element={<AdminDataPage />} />
           <Route path="/admin/tps" element={<AdminTpsPage />} />
           <Route path="/admin/riwayat" element={<AdminHistoryPage />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

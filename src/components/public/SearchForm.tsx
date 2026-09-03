@@ -43,7 +43,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ketik NIK 16 digit atau Nama lengkap pemilih..."
+          placeholder="Ketik NIK / NIK Tersamar atau Nama pemilih..."
           className="w-full pl-11 pr-12 py-3.5 sm:py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 text-base sm:text-lg focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 shadow-sm transition-all min-h-[52px]"
           disabled={loading}
           autoComplete="off"
@@ -68,13 +68,10 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             Mode Pencarian:{' '}
             <strong className="text-emerald-800 font-semibold">
               {isNikInput
-                ? `NIK ${query.trim().length}/16 digit (${query.trim().length === 16 ? 'Valid' : 'Lengkapi 16 digit'})`
+                ? `Pencarian NIK (${query.trim().length} Digit)`
                 : 'Pencarian Nama Pemilih'}
             </strong>
           </span>
-          {isNikInput && query.trim().length !== 16 && (
-            <span className="text-amber-600 font-medium">NIK harus 16 digit</span>
-          )}
         </div>
       )}
 

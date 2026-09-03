@@ -51,13 +51,31 @@ export const AdminUploadPage: React.FC = () => {
           await supabase.from('pemilih').update({ is_active: false }).eq('is_active', true);
         }
 
-        // Prepare records array
-        const payload = parseResult.validRows.map((r) => r.data);
+        // Prepare records array & ensure unique NIKs per batch
+        const rawPayload = parseResult.validRows.map((r) => r.data);
+        const nikCounter = new Map<string, number>();
+        const uniquePayload: any[] = [];
+
+        for (const item of rawPayload) {
+          if (!item.nik) continue;
+          
+          const baseNik = item.nik.trim();
+          const count = (nikCounter.get(baseNik) || 0) + 1;
+          nikCounter.set(baseNik, count);
+
+          if (count === 1) {
+            uniquePayload.push({ ...item, nik: baseNik });
+          } else {
+            // Jika NIK terduplikat/tersamar dalam file Excel, beri suffix unik (#2, #3, dst)
+            // untuk mencegah Postgres 21000 error (ON CONFLICT DO UPDATE command cannot affect row a second time)
+            uniquePayload.push({ ...item, nik: `${baseNik}#${count}` });
+          }
+        }
 
         // Batch upsert in chunks of 500
         const chunkSize = 500;
-        for (let i = 0; i < payload.length; i += chunkSize) {
-          const chunk = payload.slice(i, i + chunkSize);
+        for (let i = 0; i < uniquePayload.length; i += chunkSize) {
+          const chunk = uniquePayload.slice(i, i + chunkSize);
           const { error: upsertErr } = await supabase.from('pemilih').upsert(chunk, {
             onConflict: 'nik',
           });

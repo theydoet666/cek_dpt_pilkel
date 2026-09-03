@@ -39,7 +39,7 @@ export function usePemilihSearch() {
   const search = async (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) {
-      setError('Masukkan NIK (16 digit) atau Nama pemilih.');
+      setError('Masukkan NIK atau Nama pemilih.');
       return;
     }
 
@@ -62,7 +62,8 @@ export function usePemilihSearch() {
         const matches = MOCK_DEMO_RESULTS.filter(
           (item) =>
             item.nama.toUpperCase().includes(qUpper) ||
-            (/^\d{16}$/.test(trimmed) && item.nik_tersamar.startsWith(trimmed.slice(0, 4)))
+            item.nik_tersamar.includes(trimmed) ||
+            item.nik_tersamar.startsWith(trimmed.slice(0, 4))
         );
         setResults(matches);
       } else {

@@ -9,6 +9,7 @@ interface DataTableProps {
   onAddClick: () => void;
   onEditClick: (item: Pemilih) => void;
   onDeleteClick: (item: Pemilih) => void;
+  onDeleteAllClick?: () => void;
 }
 
 export const DataTable: React.FC<DataTableProps> = ({
@@ -17,6 +18,7 @@ export const DataTable: React.FC<DataTableProps> = ({
   onAddClick,
   onEditClick,
   onDeleteClick,
+  onDeleteAllClick,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTps, setSelectedTps] = useState<number | 'all'>('all');
@@ -103,6 +105,17 @@ export const DataTable: React.FC<DataTableProps> = ({
             </select>
           </div>
 
+          {onDeleteAllClick && data.length > 0 && (
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={onDeleteAllClick}
+              icon={<Trash2 className="w-4 h-4" />}
+            >
+              Hapus Semua Data
+            </Button>
+          )}
+
           <Button
             variant="primary"
             size="sm"
@@ -150,7 +163,7 @@ export const DataTable: React.FC<DataTableProps> = ({
                     {item.no_urut || (currentPage - 1) * itemsPerPage + idx + 1}
                   </td>
                   <td className="p-3.5 font-mono font-medium text-slate-900">
-                    {item.nik}
+                    {item.nik.split('#')[0]}
                   </td>
                   <td className="p-3.5 font-bold text-slate-900">{item.nama}</td>
                   <td className="p-3.5">

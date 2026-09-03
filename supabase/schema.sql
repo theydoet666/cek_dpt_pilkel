@@ -77,17 +77,28 @@ create table if not exists public.admin_profiles (
   created_at  timestamptz not null default now()
 );
 
--- 5. ROW LEVEL SECURITY (RLS)
+-- 5. TABEL PENGATURAN APLIKASI (LOGO & BRANDING)
+create table if not exists public.app_settings (
+  key         text primary key,
+  value       text,
+  updated_at  timestamptz not null default now()
+);
+
+-- 6. ROW LEVEL SECURITY (RLS)
 alter table public.pemilih enable row level security;
 alter table public.tps enable row level security;
 alter table public.upload_batches enable row level security;
 alter table public.admin_profiles enable row level security;
+alter table public.app_settings enable row level security;
 
--- Policy RLS TPS: Publik boleh baca info lokasi TPS
+-- Policy RLS TPS & Settings: Publik boleh membaca info TPS dan Pengaturan (Logo)
 create policy "public_read_tps" on public.tps
   for select using (true);
 
--- Policy RLS Pemilih (Admin Authenticated): Full Akses
+create policy "public_read_settings" on public.app_settings
+  for select using (true);
+
+-- Policy Admin Authenticated: Full Akses
 create policy "admin_all_pemilih" on public.pemilih
   for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
@@ -97,6 +108,10 @@ create policy "admin_all_tps" on public.tps
   with check (auth.role() = 'authenticated');
 
 create policy "admin_all_batches" on public.upload_batches
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "admin_all_settings" on public.app_settings
   for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
@@ -118,7 +133,12 @@ begin
   return query
   select
     p.nama,
-    concat(left(p.nik, 4), '********', right(p.nik, 4)) as nik_tersamar,
+    case
+      when p.nik ilike '%*%' then split_part(p.nik, '#', 1)
+      when length(split_part(p.nik, '#', 1)) >= 16 then concat(left(split_part(p.nik, '#', 1), 4), '********', right(split_part(p.nik, '#', 1), 4))
+      when length(split_part(p.nik, '#', 1)) >= 8 then concat(left(split_part(p.nik, '#', 1), 2), '****', right(split_part(p.nik, '#', 1), 2))
+      else split_part(p.nik, '#', 1)
+    end as nik_tersamar,
     p.alamat,
     p.tps_nomor,
     coalesce(t.nama_lokasi, concat('Balai Banjar / Lokasi TPS ', p.tps_nomor)) as tps_lokasi,
@@ -127,9 +147,9 @@ begin
   left join public.tps t on t.nomor_tps = p.tps_nomor
   where p.is_active = true
     and (
-      (q ~ '^[0-9]{16}$' and p.nik = q)
+      p.nik ilike '%' || trim(q) || '%'
       or
-      (q !~ '^[0-9]{16}$' and p.nama ilike '%' || trim(q) || '%')
+      p.nama ilike '%' || trim(q) || '%'
     )
   limit 20;
 end;

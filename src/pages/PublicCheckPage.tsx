@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePemilihSearch } from '../hooks/usePemilihSearch';
+import { useAppLogo } from '../context/LogoContext';
+import { supabase } from '../lib/supabaseClient';
+import type { TPS } from '../lib/types';
 import { SearchForm } from '../components/public/SearchForm';
 import { ResultCard } from '../components/public/ResultCard';
 import { EmptyState } from '../components/public/EmptyState';
@@ -15,30 +18,56 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/shared/Button';
 
+const INITIAL_TPS: TPS[] = [
+  {
+    id: '1',
+    nomor_tps: 7,
+    nama_lokasi: 'Balai Banjar Jasri',
+    alamat_lokasi: 'Banjar Jasri, Desa Belega, Kec. Blahbatuh',
+    dusun: 'Warga Banjar Jasri dan sekitarnya',
+  },
+  {
+    id: '2',
+    nomor_tps: 8,
+    nama_lokasi: 'Balai Banjar Kebon',
+    alamat_lokasi: 'Banjar Kebon, Desa Belega, Kec. Blahbatuh',
+    dusun: 'Warga Banjar Kebon dan sekitarnya',
+  },
+  {
+    id: '3',
+    nomor_tps: 9,
+    nama_lokasi: 'Balai Banjar Belega',
+    alamat_lokasi: 'Banjar Belega, Desa Belega, Kec. Blahbatuh',
+    dusun: 'Warga Banjar Belega, Kompleks BTN Belega Perma, BTN KG, & TK',
+  },
+];
+
 export const PublicCheckPage: React.FC = () => {
   const { search, clearSearch, results, loading, error, hasSearched } = usePemilihSearch();
+  const { logoUrl } = useAppLogo();
   const [showTpsModal, setShowTpsModal] = useState(false);
+  const [tpsList, setTpsList] = useState<TPS[]>(INITIAL_TPS);
 
-  const tpsLocations = [
-    {
-      tps: 7,
-      nama: 'Balai Banjar Jasri',
-      alamat: 'Banjar Jasri, Desa Belega, Kec. Blahbatuh',
-      cakupan: 'Warga Banjar Jasri dan sekitarnya',
-    },
-    {
-      tps: 8,
-      nama: 'Balai Banjar Kebon',
-      alamat: 'Banjar Kebon, Desa Belega, Kec. Blahbatuh',
-      cakupan: 'Warga Banjar Kebon dan sekitarnya',
-    },
-    {
-      tps: 9,
-      nama: 'Balai Banjar Belega',
-      alamat: 'Banjar Belega, Desa Belega, Kec. Blahbatuh',
-      cakupan: 'Warga Banjar Belega, Kompleks BTN Belega Perma, BTN KG, & TK',
-    },
-  ];
+  useEffect(() => {
+    const fetchTps = async () => {
+      try {
+        const isPlaceholder = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder');
+        if (!isPlaceholder) {
+          const { data, error } = await supabase
+            .from('tps')
+            .select('*')
+            .order('nomor_tps', { ascending: true });
+
+          if (!error && data && data.length > 0) {
+            setTpsList(data);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch TPS list in public page:', e);
+      }
+    };
+    fetchTps();
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -46,9 +75,17 @@ export const PublicCheckPage: React.FC = () => {
       <header className="bg-emerald-900 text-white border-b border-emerald-800 shadow-md">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-700 rounded-xl text-white shadow-xs">
-              <Vote className="w-6 h-6" />
-            </div>
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Logo Panitia"
+                className="w-10 h-10 object-contain bg-white rounded-xl p-1 shadow-md border border-emerald-700/50"
+              />
+            ) : (
+              <div className="p-2 bg-emerald-700 rounded-xl text-white shadow-xs">
+                <Vote className="w-6 h-6" />
+              </div>
+            )}
             <div>
               <h1 className="font-extrabold text-base sm:text-lg leading-tight tracking-tight text-white">
                 Panitia Pemilihan Perbekel Belega
@@ -58,14 +95,6 @@ export const PublicCheckPage: React.FC = () => {
               </p>
             </div>
           </div>
-
-          <button
-            onClick={() => setShowTpsModal(true)}
-            className="hidden sm:flex items-center gap-1.5 text-xs font-semibold bg-emerald-800/80 hover:bg-emerald-800 text-emerald-100 px-3 py-1.5 rounded-xl transition-colors border border-emerald-700"
-          >
-            <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Info TPS (7, 8, 9)</span>
-          </button>
         </div>
       </header>
 
@@ -187,25 +216,27 @@ export const PublicCheckPage: React.FC = () => {
           </p>
 
           <div className="space-y-3">
-            {tpsLocations.map((item) => (
+            {tpsList.map((item) => (
               <div
-                key={item.tps}
+                key={item.id || item.nomor_tps}
                 className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1"
               >
                 <div className="flex items-center justify-between">
                   <span className="px-3 py-1 bg-emerald-700 text-white font-extrabold text-xs rounded-full">
-                    TPS 0{item.tps}
+                    TPS {String(item.nomor_tps).padStart(2, '0')}
                   </span>
-                  <span className="text-xs font-semibold text-emerald-800">{item.nama}</span>
+                  <span className="text-xs font-semibold text-emerald-800">{item.nama_lokasi}</span>
                 </div>
-                <p className="text-sm font-bold text-slate-900 pt-1">{item.nama}</p>
+                <p className="text-sm font-bold text-slate-900 pt-1">{item.nama_lokasi}</p>
                 <p className="text-xs text-slate-600 flex items-center gap-1">
                   <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>{item.alamat}</span>
+                  <span>{item.alamat_lokasi}</span>
                 </p>
-                <p className="text-xs text-slate-500 italic pt-1">
-                  Cakupan: {item.cakupan}
-                </p>
+                {item.dusun && (
+                  <p className="text-xs text-slate-500 italic pt-1">
+                    Cakupan: {item.dusun}
+                  </p>
+                )}
               </div>
             ))}
           </div>

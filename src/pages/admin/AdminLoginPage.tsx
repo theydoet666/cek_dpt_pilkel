@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useAppLogo } from '../../context/LogoContext';
 import { Button } from '../../components/shared/Button';
 import { Vote, Lock, Mail, AlertCircle, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,6 +13,7 @@ export const AdminLoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const { signIn } = useAuth();
+  const { logoUrl } = useAppLogo();
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -62,9 +64,17 @@ export const AdminLoginPage: React.FC = () => {
 
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="w-14 h-14 bg-emerald-700 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md">
-            <Vote className="w-8 h-8" />
-          </div>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt="Logo"
+              className="w-16 h-16 object-contain rounded-2xl mx-auto shadow-md p-1 bg-slate-50 border border-slate-200"
+            />
+          ) : (
+            <div className="w-14 h-14 bg-emerald-700 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md">
+              <Vote className="w-8 h-8" />
+            </div>
+          )}
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Login Admin Panitia
           </h2>
