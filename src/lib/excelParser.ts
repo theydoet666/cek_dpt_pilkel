@@ -1,46 +1,25 @@
-// @ts-ignore
-import ExcelJSModule from 'exceljs/dist/exceljs.min.js';
+import readXlsxFile from 'read-excel-file/browser';
 import type { ExcelParseResult, ParsedRow, Pemilih } from './types';
-
-const ExcelJS = (ExcelJSModule && ExcelJSModule.Workbook) ? ExcelJSModule : (ExcelJSModule?.default || ExcelJSModule);
-
-/**
- * Ekstrak nilai sel murni dari ExcelJS CellValue (menangani rich text, formula result, date, dsb)
- */
-function extractCellValue(val: any): any {
-  if (val === null || val === undefined) return '';
-  if (typeof val === 'object') {
-    if (val instanceof Date) return val;
-    if ('text' in val) return val.text;
-    if ('result' in val) return val.result;
-    if ('richText' in val && Array.isArray(val.richText)) {
-      return val.richText.map((rt: any) => rt.text).join('');
-    }
-  }
-  return val;
-}
 
 /**
  * Format Date / Serial / String tanggal dari DD|MM|YYYY atau DD/MM/YYYY atau Date object menjadi YYYY-MM-DD
  */
 function parseDate(val: any): string | null {
-  const raw = extractCellValue(val);
-  if (raw === null || raw === undefined || raw === '') return null;
+  if (val === null || val === undefined || val === '') return null;
 
   // Handle JS Date object
-  if (raw instanceof Date) {
-    if (isNaN(raw.getTime())) return null;
-    const y = raw.getFullYear();
-    const m = String(raw.getMonth() + 1).padStart(2, '0');
-    const d = String(raw.getDate()).padStart(2, '0');
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
 
   // Handle Excel date number (serial number)
-  if (typeof raw === 'number') {
-    // Excel serial date formula: 1 = Jan 1, 1900
+  if (typeof val === 'number') {
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    const targetDate = new Date(excelEpoch.getTime() + raw * 86400000);
+    const targetDate = new Date(excelEpoch.getTime() + val * 86400000);
     if (!isNaN(targetDate.getTime())) {
       const y = targetDate.getUTCFullYear();
       const m = String(targetDate.getUTCMonth() + 1).padStart(2, '0');
@@ -49,7 +28,7 @@ function parseDate(val: any): string | null {
     }
   }
 
-  const str = String(raw).trim();
+  const str = String(val).trim();
   if (!str) return null;
 
   // Pattern YYYY-MM-DD
@@ -83,7 +62,6 @@ function parseDate(val: any): string | null {
     return `${y}-${m}-${d}`;
   }
 
-  // Return null jika tanggal tidak valid
   return null;
 }
 
@@ -91,63 +69,53 @@ function parseDate(val: any): string | null {
  * Bersihkan string NIK (pertahankan karakter asterisks jika tersamar, pastikan string)
  */
 function cleanNik(val: any): string {
-  const raw = extractCellValue(val);
-  if (raw === null || raw === undefined) return '';
-  return String(raw).trim();
+  if (val === null || val === undefined) return '';
+  return String(val).trim();
 }
 
 /**
- * Parse file Excel rekap DPT Desa Belega menggunakan ExcelJS yang aman
+ * Parse file Excel rekap DPT Desa Belega menggunakan read-excel-file yang aman dan ringan
  */
 export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
-  const arrayBuffer = await file.arrayBuffer();
-  const WorkbookClass = ExcelJS.Workbook || ExcelJS;
-  const workbook = new WorkbookClass();
-  await workbook.xlsx.load(arrayBuffer);
-
-  if (!workbook.worksheets || workbook.worksheets.length === 0) {
-    throw new Error('File Excel tidak memiliki worksheet yang valid.');
+  // 1. Dapatkan seluruh sheet beserta datanya
+  const sheets = await readXlsxFile(file);
+  if (!sheets || sheets.length === 0) {
+    throw new Error('File Excel tidak memiliki sheet yang dapat dibaca.');
   }
 
-  // Cari sheet "Lolos" atau sheet pertama yang berisi data
-  let worksheet = workbook.worksheets.find(
-    (ws: any) =>
-      ws.name.toLowerCase().includes('lolos') ||
-      ws.name.toLowerCase().includes('dpt') ||
-      ws.name.toLowerCase().includes('pdpb')
+  // 2. Cari sheet "Lolos" atau "DPT" atau sheet pertama
+  let targetSheet = sheets.find(
+    (s) =>
+      s.sheet.toLowerCase().includes('lolos') ||
+      s.sheet.toLowerCase().includes('dpt') ||
+      s.sheet.toLowerCase().includes('pdpb')
   );
 
-  if (!worksheet) {
-    worksheet = workbook.worksheets[0];
+  if (!targetSheet) {
+    targetSheet = sheets[0];
   }
 
-  // Kumpulkan seluruh baris mentah
-  const rawRows: any[][] = [];
-  worksheet.eachRow({ includeEmpty: false }, (row: any) => {
-    // row.values is 1-based indexed
-    const values = Array.isArray(row.values) ? row.values.slice(1) : [];
-    rawRows.push(values.map(extractCellValue));
-  });
+  // 3. Ambil data baris
+  const rawRows: any[][] = targetSheet.data;
 
-  if (rawRows.length === 0) {
+  if (!rawRows || rawRows.length === 0) {
     throw new Error('Sheet Excel kosong atau tidak dapat dibaca.');
   }
 
-  // Cari baris header secara dinamis (baris yang punya sel "NIK" dan "NAMA")
+  // 4. Cari baris header secara dinamis (baris yang punya kolom NIK dan NAMA)
   let headerRowIndex = -1;
   const columnMapping: Record<string, number> = {};
 
   for (let i = 0; i < Math.min(rawRows.length, 25); i++) {
     const row = rawRows[i];
-    const rowStr = row.map((cell) => String(cell || '').toUpperCase().trim());
+    const rowStr = row.map((cell: any) => String(cell || '').toUpperCase().trim());
 
-    const hasNik = rowStr.some((c) => c === 'NIK' || c === 'NO NIK' || c.includes('NIK'));
-    const hasNama = rowStr.some((c) => c === 'NAMA' || c === 'NAMA PEMILIH' || c.includes('NAMA'));
+    const hasNik = rowStr.some((c: string) => c === 'NIK' || c === 'NO NIK' || c.includes('NIK'));
+    const hasNama = rowStr.some((c: string) => c === 'NAMA' || c === 'NAMA PEMILIH' || c.includes('NAMA'));
 
     if (hasNik && hasNama) {
       headerRowIndex = i;
-      // Map header column names to indexes
-      rowStr.forEach((headerText, colIdx) => {
+      rowStr.forEach((headerText: string, colIdx: number) => {
         if (headerText.includes('NO') && !headerText.includes('NIK') && !headerText.includes('TPS') && !headerText.includes('KK')) {
           columnMapping['no_urut'] = colIdx;
         } else if (headerText.includes('KECAMATAN')) {
@@ -191,10 +159,10 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
   const validRows: ParsedRow[] = [];
   const invalidRows: ParsedRow[] = [];
 
-  // Parsing data setelah baris header
+  // 5. Parsing data setelah baris header
   for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
     const row = rawRows[i];
-    if (!row || row.every((c) => String(c || '').trim() === '')) continue;
+    if (!row || row.every((c: any) => String(c || '').trim() === '')) continue;
 
     const rowNum = i + 1;
     const errors: string[] = [];
@@ -224,7 +192,7 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
     else if (rawJk.startsWith('P')) jenisKelamin = 'P';
 
     const pemilihData: Partial<Pemilih> = {
-      no_urut: columnMapping['no_urut'] !== undefined ? parseInt(row[columnMapping['no_urut']], 10) || null : null,
+      no_urut: columnMapping['no_urut'] !== undefined ? parseInt(String(row[columnMapping['no_urut']]), 10) || null : null,
       kecamatan: String(columnMapping['kecamatan'] !== undefined ? row[columnMapping['kecamatan']] || 'BLAHBATUH' : 'BLAHBATUH').trim() || 'BLAHBATUH',
       kelurahan: String(columnMapping['kelurahan'] !== undefined ? row[columnMapping['kelurahan']] || 'BELEGA' : 'BELEGA').trim() || 'BELEGA',
       nkk: String(columnMapping['nkk'] !== undefined ? row[columnMapping['nkk']] || '' : '').trim() || null,
@@ -257,7 +225,7 @@ export async function parseDptExcel(file: File): Promise<ExcelParseResult> {
 
   return {
     fileName: file.name,
-    sheetName: worksheet.name,
+    sheetName: targetSheet.sheet,
     totalRows: validRows.length + invalidRows.length,
     validRows,
     invalidRows,
