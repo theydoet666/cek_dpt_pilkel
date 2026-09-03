@@ -45,12 +45,6 @@ export const AdminUploadPage: React.FC = () => {
         });
         navigate('/admin/data');
       } else {
-        // Real Supabase Upload
-        if (mode === 'replace') {
-          // Soft delete / clear existing data
-          await supabase.from('pemilih').update({ is_active: false }).eq('is_active', true);
-        }
-
         // Prepare records array & ensure unique NIKs per batch
         const rawPayload = parseResult.validRows.map((r) => r.data);
         const nikCounter = new Map<string, number>();
@@ -67,31 +61,77 @@ export const AdminUploadPage: React.FC = () => {
             uniquePayload.push({ ...item, nik: baseNik });
           } else {
             // Jika NIK terduplikat/tersamar dalam file Excel, beri suffix unik (#2, #3, dst)
-            // untuk mencegah Postgres 21000 error (ON CONFLICT DO UPDATE command cannot affect row a second time)
             uniquePayload.push({ ...item, nik: `${baseNik}#${count}` });
           }
         }
 
-        // Batch upsert in chunks of 500
-        const chunkSize = 500;
-        for (let i = 0; i < uniquePayload.length; i += chunkSize) {
-          const chunk = uniquePayload.slice(i, i + chunkSize);
-          const { error: upsertErr } = await supabase.from('pemilih').upsert(chunk, {
-            onConflict: 'nik',
-          });
+        // 1. Buat log upload_batches terlebih dahulu
+        const { data: batchLog } = await supabase
+          .from('upload_batches')
+          .insert({
+            file_name: parseResult.fileName,
+            total_rows: parseResult.totalRows,
+            valid_rows: parseResult.validRows.length,
+            error_rows: parseResult.invalidRows.length,
+            mode: mode,
+            status: 'processing',
+          })
+          .select('id')
+          .single();
 
-          if (upsertErr) throw upsertErr;
+        const batchId = batchLog?.id || null;
+
+        if (mode === 'replace') {
+          // =========================================================
+          // MODE REPLACE: Panggil RPC Atomik dalam 1 Transaksi Database
+          // =========================================================
+          try {
+            const { data: rpcRes, error: rpcErr } = await supabase.rpc('replace_all_pemilih', {
+              batch: uniquePayload,
+              batch_id: batchId,
+            });
+
+            if (rpcErr) throw rpcErr;
+            if (!rpcRes?.success) {
+              throw new Error('Gagal memproses replace data secara atomik.');
+            }
+          } catch (rpcCatchErr: any) {
+            console.warn('RPC replace_all_pemilih fallback:', rpcCatchErr.message);
+            // Fallback jika migration 005 belum dijalankan di DB
+            await supabase.from('pemilih').update({ is_active: false }).eq('is_active', true);
+            const chunkSize = 500;
+            for (let i = 0; i < uniquePayload.length; i += chunkSize) {
+              const chunk = uniquePayload.slice(i, i + chunkSize);
+              const { error: upsertErr } = await supabase.from('pemilih').upsert(
+                chunk.map((c) => ({ ...c, upload_batch_id: batchId })),
+                { onConflict: 'nik' }
+              );
+              if (upsertErr) throw upsertErr;
+            }
+          }
+        } else {
+          // =========================================================
+          // MODE UPSERT: Batch upsert dalam chunks per 500 baris
+          // =========================================================
+          const chunkSize = 500;
+          for (let i = 0; i < uniquePayload.length; i += chunkSize) {
+            const chunk = uniquePayload.slice(i, i + chunkSize);
+            const { error: upsertErr } = await supabase.from('pemilih').upsert(
+              chunk.map((c) => ({ ...c, upload_batch_id: batchId })),
+              { onConflict: 'nik' }
+            );
+
+            if (upsertErr) throw upsertErr;
+          }
         }
 
-        // Record to upload_batches log
-        await supabase.from('upload_batches').insert({
-          file_name: parseResult.fileName,
-          total_rows: parseResult.totalRows,
-          valid_rows: parseResult.validRows.length,
-          error_rows: parseResult.invalidRows.length,
-          mode: mode,
-          status: 'success',
-        });
+        // 2. Update status batch log menjadi success
+        if (batchId) {
+          await supabase
+            .from('upload_batches')
+            .update({ status: 'success' })
+            .eq('id', batchId);
+        }
 
         toast.success(`Upload Berhasil! ${parseResult.validRows.length} data DPT disimpan.`, {
           id: toastId,
