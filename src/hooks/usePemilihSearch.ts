@@ -30,7 +30,7 @@ const MOCK_DEMO_RESULTS: SearchResult[] = [
   },
 ];
 
-// Rate limiting tracker (client-side anti-scraping guard)
+// Layer 1: Client-Side Rate Limiting (Defense in Depth)
 let searchTimestamps: number[] = [];
 const RATE_LIMIT_WINDOW_MS = 30000; // 30 detik
 const MAX_REQUESTS_PER_WINDOW = 12; // Maks 12 pencarian per 30 detik
@@ -54,20 +54,20 @@ export function usePemilihSearch() {
       return;
     }
 
-    // Rate limiting check
+    // 1. Client-Side Rate Limiting Check
     const now = Date.now();
     searchTimestamps = searchTimestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
 
     if (searchTimestamps.length > 0) {
       const lastTimestamp = searchTimestamps[searchTimestamps.length - 1];
       if (now - lastTimestamp < MIN_INTERVAL_MS) {
-        // Terlalu cepat, abaikan request beruntun
+        // Abaikan ketukan beruntun terlalu cepat
         return;
       }
     }
 
     if (searchTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-      setError('Terlalu banyak permintaan pencarian. Mohon tunggu beberapa detik demi keamanan sistem.');
+      setError('Terlalu banyak permintaan pencarian. Mohon tunggu beberapa detik demi keamanan.');
       return;
     }
 
@@ -82,7 +82,7 @@ export function usePemilihSearch() {
 
       if (isPlaceholder) {
         // Fallback demo mode
-        await new Promise((r) => setTimeout(r, 600)); // Simulasi network delay
+        await new Promise((r) => setTimeout(r, 600));
         const qUpper = trimmed.toUpperCase();
         const matches = MOCK_DEMO_RESULTS.filter(
           (item) =>
@@ -92,16 +92,44 @@ export function usePemilihSearch() {
         );
         setResults(matches);
       } else {
-        // RPC Call resmi ke Supabase search_pemilih function
-        const { data, error: rpcErr } = await supabase.rpc('search_pemilih', {
-          q: trimmed,
-        });
+        // 2. Layer 2: Server-Side Rate Limiting via Supabase Edge Function 'cek-dpt-search'
+        let edgeData: any = null;
+        let edgeSuccess = false;
 
-        if (rpcErr) {
-          throw rpcErr;
+        try {
+          const { data, error: fnErr } = await supabase.functions.invoke('cek-dpt-search', {
+            body: { q: trimmed },
+          });
+
+          if (fnErr) {
+            // Tangani HTTP 429 dari Edge Function
+            if (fnErr.message?.includes('429') || fnErr.context?.status === 429) {
+              throw new Error('Terlalu banyak permintaan dari perangkat Anda. Mohon tunggu 1 menit.');
+            }
+            // Jika Edge Function belum di-deploy, fallback ke RPC langsung
+            console.warn('Edge function not ready, using direct RPC fallback:', fnErr.message);
+          } else {
+            edgeData = data;
+            edgeSuccess = true;
+          }
+        } catch (edgeCatchErr: any) {
+          if (edgeCatchErr.message?.includes('Terlalu banyak permintaan')) {
+            throw edgeCatchErr;
+          }
+          console.warn('Edge function invoke catch, fallback to RPC:', edgeCatchErr.message);
         }
 
-        setResults(data || []);
+        if (edgeSuccess) {
+          setResults(edgeData || []);
+        } else {
+          // Fallback langsung ke Supabase RPC search_pemilih
+          const { data: rpcData, error: rpcErr } = await supabase.rpc('search_pemilih', {
+            q: trimmed,
+          });
+
+          if (rpcErr) throw rpcErr;
+          setResults(rpcData || []);
+        }
       }
     } catch (err: any) {
       console.error('Error searching pemilih:', err);
