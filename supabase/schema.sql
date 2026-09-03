@@ -105,12 +105,9 @@ create policy "public_read_tps" on public.tps
 create policy "public_read_settings" on public.app_settings
   for select using (true);
 
-create policy "public_read_batches" on public.upload_batches
-  for select using (true);
-
--- Policy Admin Authenticated: Full Akses
+-- Policy Admin Authenticated: Full Akses Ketat (Strictly Authenticated Only)
 create policy "admin_all_pemilih" on public.pemilih
-  for all using (auth.role() = 'authenticated' or true)
+  for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
 create policy "admin_all_tps" on public.tps
@@ -118,6 +115,10 @@ create policy "admin_all_tps" on public.tps
   with check (auth.role() = 'authenticated');
 
 create policy "admin_all_batches" on public.upload_batches
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "admin_all_profiles" on public.admin_profiles
   for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
