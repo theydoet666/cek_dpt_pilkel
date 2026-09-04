@@ -1,14 +1,59 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.8';
 
-// Header CORS standar agar bisa dipanggil dari browser publik
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// ─── CORS: Validasi Origin Dinamis ──────────────────────────────────────────
+// Domain yang diizinkan dibaca dari environment variable ALLOWED_ORIGINS
+// Format: pisahkan dengan koma jika lebih dari satu domain.
+// Contoh konfigurasi di Supabase Dashboard → Edge Functions → Secrets:
+//   ALLOWED_ORIGINS = https://dpt.belega.desa.id,https://www.dpt.belega.desa.id
+//
+// Jika ALLOWED_ORIGINS tidak dikonfigurasi (string kosong), fallback ke '*'
+// agar kompatibel dengan environment development lokal.
+const rawAllowed = Deno.env.get('ALLOWED_ORIGINS') || '';
+const ALLOWED_ORIGINS: string[] = rawAllowed
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/**
+ * Kembalikan header CORS yang sesuai untuk origin request.
+ *
+ * Logika:
+ * - Jika whitelist kosong (dev / belum konfigurasi) → '*' (backward-compat)
+ * - Jika origin request ada di whitelist               → izinkan eksplisit
+ * - Jika origin request tidak dikenal                  → balikan origin[0] agar
+ *   browser CORS policy otomatis memblokir (tidak match)
+ *
+ * Header 'Vary: Origin' dikirim agar CDN/cache tidak menyajikan
+ * response CORS yang salah ke origin yang berbeda.
+ */
+function getCorsHeaders(requestOrigin: string | null): Record<string, string> {
+  let allowedOrigin = '*'; // default jika whitelist belum dikonfigurasi
+
+  if (ALLOWED_ORIGINS.length > 0) {
+    if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) {
+      allowedOrigin = requestOrigin; // origin dikenal → izinkan
+    } else {
+      // Origin tidak dikenal → pantulkan domain pertama di whitelist
+      // Browser akan melihat mismatch dan blokir secara otomatis
+      allowedOrigin = ALLOWED_ORIGINS[0];
+    }
+  }
+
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Credentials': 'false',
+    'Vary': 'Origin',
+  };
+}
 
 serve(async (req) => {
+  // Ekstrak origin sekali, digunakan di semua response
+  const requestOrigin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(requestOrigin);
+
   // 1. Tangani preflight request OPTIONS dari browser
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -29,6 +74,14 @@ serve(async (req) => {
     if (!q) {
       return new Response(
         JSON.stringify({ error: 'Parameter pencarian (q) wajib diisi.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validasi panjang query untuk mencegah abuse payload besar
+    if (q.length > 100) {
+      return new Response(
+        JSON.stringify({ error: 'Kueri pencarian terlalu panjang (maksimal 100 karakter).' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

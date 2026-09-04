@@ -79,6 +79,9 @@ const AdminTpsPage = lazy(() =>
 const AdminHistoryPage = lazy(() =>
   import('../pages/admin/AdminHistoryPage').then((m) => ({ default: m.AdminHistoryPage }))
 );
+const AdminSearchLogsPage = lazy(() =>
+  import('../pages/admin/AdminSearchLogsPage').then((m) => ({ default: m.AdminSearchLogsPage }))
+);
 const AdminSettingsPage = lazy(() =>
   import('../pages/admin/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage }))
 );
@@ -105,6 +108,7 @@ export const AppRouter: React.FC = () => {
             {/* Protected Admin Routes */}
             <Route element={<ProtectedRoute />}>
               <Route path="/admin" element={<AdminDashboardPage />} />
+              <Route path="/admin/logs" element={<AdminSearchLogsPage />} />
               <Route path="/admin/upload" element={<AdminUploadPage />} />
               <Route path="/admin/data" element={<AdminDataPage />} />
               <Route path="/admin/tps" element={<AdminTpsPage />} />

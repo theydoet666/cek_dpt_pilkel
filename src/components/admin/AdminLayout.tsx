@@ -12,6 +12,7 @@ import {
   Vote,
   ShieldCheck,
   Image as ImageIcon,
+  Search,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppLogo } from '../../context/LogoContext';
@@ -36,6 +37,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
 
   const navItems = [
     { label: 'Dashboard', path: '/admin', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { label: 'Log Pengecekan', path: '/admin/logs', icon: <Search className="w-5 h-5" /> },
     { label: 'Upload Excel', path: '/admin/upload', icon: <Upload className="w-5 h-5" /> },
     { label: 'Data Pemilih', path: '/admin/data', icon: <Users className="w-5 h-5" /> },
     { label: 'Kelola TPS', path: '/admin/tps', icon: <Building className="w-5 h-5" /> },

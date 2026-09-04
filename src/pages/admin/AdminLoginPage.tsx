@@ -29,10 +29,10 @@ export const AdminLoginPage: React.FC = () => {
     try {
       const isPlaceholder = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder');
 
-      if (isPlaceholder) {
-        // Fallback demo login jika Supabase belum dikonfigurasi real
+      if (import.meta.env.DEV && isPlaceholder) {
+        // Fallback demo login HANYA di mode development lokal
         await new Promise((r) => setTimeout(r, 600));
-        toast.success('Login Demo Berhasil!');
+        toast.success('Login Demo Berhasil! (Mode Development)');
         navigate('/admin');
       } else {
         const { error: authErr } = await signIn(email, password);

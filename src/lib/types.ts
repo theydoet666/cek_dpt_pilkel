@@ -71,3 +71,35 @@ export interface ExcelParseResult {
   headerRowIndex: number; // 1-indexed
   detectedHeaders: Record<string, string>;
 }
+
+export interface SearchLog {
+  id: string;
+  query_raw: string;
+  query_clean: string;
+  search_type: 'NAMA' | 'NIK';
+  is_found: boolean;
+  result_count: number;
+  matched_nama?: string | null;
+  tps_nomor?: number | null;
+  created_at: string;
+}
+
+export interface SearchFrequencyItem {
+  query_clean: string;
+  search_type: 'NAMA' | 'NIK';
+  search_count: number;
+  is_found: boolean;
+  matched_nama?: string | null;
+  tps_nomor?: number | null;
+  first_searched_at: string;
+  last_searched_at: string;
+}
+
+export interface SearchStatsSummary {
+  total_searches: number;
+  unique_queries: number;
+  total_found: number;
+  total_not_found: number;
+  unique_not_found: number;
+}
+

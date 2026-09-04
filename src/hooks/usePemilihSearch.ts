@@ -91,6 +91,28 @@ export function usePemilihSearch() {
             item.nik_tersamar.startsWith(trimmed.slice(0, 4))
         );
         setResults(matches);
+
+        // Simpan log ke localStorage untuk mock mode admin
+        try {
+          const rawLogs = localStorage.getItem('demo_search_logs');
+          const logs = rawLogs ? JSON.parse(rawLogs) : [];
+          const isNik = /^\d{16}$/.test(trimmed);
+          const newLog = {
+            id: 'mock-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+            query_raw: trimmed,
+            query_clean: trimmed.toUpperCase(),
+            search_type: isNik ? 'NIK' : 'NAMA',
+            is_found: matches.length > 0,
+            result_count: matches.length,
+            matched_nama: matches.length === 1 ? matches[0].nama : matches.length > 1 ? `${matches[0].nama} (+${matches.length - 1} lainnya)` : null,
+            tps_nomor: matches.length > 0 ? matches[0].tps_nomor : null,
+            created_at: new Date().toISOString(),
+          };
+          logs.unshift(newLog);
+          localStorage.setItem('demo_search_logs', JSON.stringify(logs.slice(0, 500)));
+        } catch (e) {
+          console.warn('Could not save demo search log:', e);
+        }
       } else {
         // 2. Layer 2: Server-Side Rate Limiting via Supabase Edge Function 'cek-dpt-search'
         let edgeData: any = null;

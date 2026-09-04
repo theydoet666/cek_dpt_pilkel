@@ -14,9 +14,12 @@ import {
   RefreshCw,
   UserCheck,
   Building,
+  Search,
+  AlertTriangle,
+  TrendingUp,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import type { TPS } from '../../lib/types';
+import type { TPS, SearchStatsSummary } from '../../lib/types';
 
 export const AdminDashboardPage: React.FC = () => {
   const [tpsList, setTpsList] = useState<TPS[]>([]);
@@ -24,6 +27,13 @@ export const AdminDashboardPage: React.FC = () => {
   const [totalPemilih, setTotalPemilih] = useState<number>(0);
   const [totalLaki, setTotalLaki] = useState<number>(0);
   const [totalPerempuan, setTotalPerempuan] = useState<number>(0);
+  const [searchStats, setSearchStats] = useState<SearchStatsSummary>({
+    total_searches: 8,
+    unique_queries: 5,
+    total_found: 5,
+    total_not_found: 3,
+    unique_not_found: 2,
+  });
   const [latestBatch, setLatestBatch] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -110,6 +120,32 @@ export const AdminDashboardPage: React.FC = () => {
           .eq('is_active', true)
           .eq('jenis_kelamin', 'P');
         setTotalPerempuan(femaleCount || 0);
+
+        // 5. Fetch Search Stats
+        try {
+          const { data: statsData, error: statsErr } = await supabase.rpc('get_search_stats');
+          if (!statsErr && statsData) {
+            setSearchStats(statsData);
+          } else {
+            // Fallback kalkulasi dari log lokal
+            const rawLogs = localStorage.getItem('demo_search_logs');
+            if (rawLogs) {
+              const parsed = JSON.parse(rawLogs);
+              const uniqueQueries = new Set(parsed.map((p: any) => p.query_clean)).size;
+              const notFound = parsed.filter((p: any) => !p.is_found).length;
+              const uniqueNotFound = new Set(parsed.filter((p: any) => !p.is_found).map((p: any) => p.query_clean)).size;
+              setSearchStats({
+                total_searches: parsed.length,
+                unique_queries: uniqueQueries,
+                total_found: parsed.length - notFound,
+                total_not_found: notFound,
+                unique_not_found: uniqueNotFound,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
 
         // 6. Fetch latest upload batch
         const { data: batchData } = await supabase
@@ -301,6 +337,72 @@ export const AdminDashboardPage: React.FC = () => {
               })}
             </div>
           )}
+        </div>
+
+        {/* Search & Audit Analytics Section */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-md space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-md mb-1.5">
+                <TrendingUp className="w-3.5 h-3.5" /> Real-Time Analytics
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <Search className="w-5 h-5 text-emerald-700" /> Analisis Pengecekan DPT oleh Warga
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Laporan aktivitas pencarian warga, nama unik dicek, dan rekap nama yang belum ada di database DPT.
+              </p>
+            </div>
+
+            <Link
+              to="/admin/logs"
+              className="px-4 py-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+            >
+              <Search className="w-4 h-4" /> Buka Laporan Lengkap ↗
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                Total Pengecekan
+              </span>
+              <h4 className="text-2xl font-extrabold text-slate-900">
+                {searchStats.total_searches}
+              </h4>
+              <p className="text-[11px] text-slate-500">Seluruh hit pencarian publik</p>
+            </div>
+
+            <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-1">
+              <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider block">
+                Nama Unik Dicek
+              </span>
+              <h4 className="text-2xl font-extrabold text-emerald-900">
+                {searchStats.unique_queries}
+              </h4>
+              <p className="text-[11px] text-emerald-600">Dihitung 1x per nama warga</p>
+            </div>
+
+            <div className="bg-indigo-50/50 border border-indigo-200 rounded-2xl p-4 space-y-1">
+              <span className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider block">
+                Ditemukan di DPT
+              </span>
+              <h4 className="text-2xl font-extrabold text-indigo-900">
+                {searchStats.total_found}
+              </h4>
+              <p className="text-[11px] text-indigo-600">Terdaftar resmi di TPS</p>
+            </div>
+
+            <div className="bg-rose-50/50 border border-rose-200 rounded-2xl p-4 space-y-1">
+              <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider block flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> Belum Terdaftar
+              </span>
+              <h4 className="text-2xl font-extrabold text-rose-900">
+                {searchStats.unique_not_found} <span className="text-xs font-normal text-rose-700">nama unik</span>
+              </h4>
+              <p className="text-[11px] text-rose-600">Perlu kroscek / pengaduan</p>
+            </div>
+          </div>
         </div>
 
         {/* Action Widgets Grid */}

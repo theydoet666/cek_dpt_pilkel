@@ -126,7 +126,31 @@ create policy "admin_all_settings" on public.app_settings
   for all using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
--- 7. FUNGSI PENCARIAN PUBLIK (RPC DEFINER - MEMBATASI KOLOM & MENYAMARKAN NIK)
+-- 6.1 TABEL LOG PENCARIAN PUBLIK (SEARCH LOGS)
+create table if not exists public.search_logs (
+  id            uuid primary key default gen_random_uuid(),
+  query_raw     text not null,
+  query_clean   text not null,
+  search_type   text check (search_type in ('NAMA', 'NIK')) default 'NAMA',
+  is_found      boolean not null default false,
+  result_count  int not null default 0,
+  matched_nama  text,
+  tps_nomor     int,
+  created_at    timestamptz not null default now()
+);
+
+-- Indexing untuk kecepatan analitik & rekap
+create index if not exists idx_search_logs_query on public.search_logs (query_clean);
+create index if not exists idx_search_logs_found on public.search_logs (is_found);
+create index if not exists idx_search_logs_created on public.search_logs (created_at desc);
+
+alter table public.search_logs enable row level security;
+
+create policy "admin_all_search_logs" on public.search_logs
+  for all using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+-- 7. FUNGSI PENCARIAN PUBLIK & PENCATATAN LOG OTOMATIS (RPC DEFINER)
 create or replace function public.search_pemilih(q text)
 returns table (
   nama            text,
@@ -143,13 +167,25 @@ as $$
 declare
   clean_q text := trim(q);
   is_16_digit boolean;
+  s_type text := 'NAMA';
+  found_count int := 0;
+  first_nama text := null;
+  first_tps int := null;
 begin
-  is_16_digit := (clean_q ~ '^[0-9]{16}$');
+  if clean_q is null or length(clean_q) = 0 then
+    return;
+  end if;
 
-  return query
+  is_16_digit := (clean_q ~ '^[0-9]{16}$');
+  if is_16_digit then
+    s_type := 'NIK';
+  end if;
+
+  -- Buat temporary table penampung hasil pencarian
+  drop table if exists temp_search_results;
+  create temp table temp_search_results as
   select
     p.nama,
-    -- Penyamaran NIK: Selalu kembalikan versi tersamar ke publik demi kepatuhan UU PDP
     case
       when p.nik ilike '%*%' then split_part(p.nik, '#', 1)
       when length(split_part(p.nik, '#', 1)) >= 16 then concat(left(split_part(p.nik, '#', 1), 4), '********', right(split_part(p.nik, '#', 1), 4))
@@ -165,21 +201,16 @@ begin
   where p.is_active = true
     and (
       case
-        -- KASUS 1: Input PERSIS 16 digit angka -> Cari HANYA by kolom NIK
         when is_16_digit then
           (
             split_part(p.nik, '#', 1) = clean_q
             or
-            -- [WORKAROUND SEMENTARA]: Penanganan file sumber Excel yang NIK-nya sudah termasking '*' dari panitia.
-            -- Match dicocokkan dengan bagian digit sebelum tanda '*' (misal 10-12 digit awal).
-            -- PERHATIAN: WORKAROUND SEMENTARA INI HARUS DITINJAU ULANG jika data produksi nanti berisi NIK utuh 16 digit.
             (
               p.nik like '%*%'
               and length(split_part(split_part(p.nik, '#', 1), '*', 1)) >= 6
               and left(clean_q, length(split_part(split_part(p.nik, '#', 1), '*', 1))) = split_part(split_part(p.nik, '#', 1), '*', 1)
             )
           )
-        -- KASUS 2: Input BUKAN 16 digit angka (Nama Warga) -> Cari HANYA by NAMA
         else
           (
             length(clean_q) >= 3
@@ -188,10 +219,114 @@ begin
       end
     )
   limit 20;
+
+  -- Hitung statistik hasil untuk dicatat ke log
+  select count(*), max(temp_search_results.nama), max(temp_search_results.tps_nomor)
+  into found_count, first_nama, first_tps
+  from temp_search_results;
+
+  -- Catat log pencarian secara atomik
+  insert into public.search_logs (
+    query_raw,
+    query_clean,
+    search_type,
+    is_found,
+    result_count,
+    matched_nama,
+    tps_nomor,
+    created_at
+  ) values (
+    q,
+    upper(clean_q),
+    s_type,
+    (found_count > 0),
+    found_count,
+    case when found_count = 1 then first_nama when found_count > 1 then concat(first_nama, ' (+', found_count - 1, ' lainnya)') else null end,
+    first_tps,
+    now()
+  );
+
+  return query select * from temp_search_results;
 end;
 $$;
 
 grant execute on function public.search_pemilih(text) to anon, authenticated;
+
+-- 7.1 FUNGSI STATISTIK LOG PENCARIAN (UNTUK DASHBOARD & LAPORAN ADMIN)
+create or replace function public.get_search_stats()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  total_searches bigint := 0;
+  unique_queries bigint := 0;
+  total_found bigint := 0;
+  total_not_found bigint := 0;
+  unique_not_found bigint := 0;
+begin
+  select
+    coalesce(count(*), 0),
+    coalesce(count(distinct query_clean), 0),
+    coalesce(count(*) filter (where is_found = true), 0),
+    coalesce(count(*) filter (where is_found = false), 0),
+    coalesce(count(distinct query_clean) filter (where is_found = false), 0)
+  into
+    total_searches,
+    unique_queries,
+    total_found,
+    total_not_found,
+    unique_not_found
+  from public.search_logs;
+
+  return jsonb_build_object(
+    'total_searches', total_searches,
+    'unique_queries', unique_queries,
+    'total_found', total_found,
+    'total_not_found', total_not_found,
+    'unique_not_found', unique_not_found
+  );
+end;
+$$;
+
+grant execute on function public.get_search_stats() to authenticated;
+
+-- 7.2 FUNGSI REKAP FREKUENSI PENCARIAN NAMA UNIK
+create or replace function public.get_search_name_frequency(only_not_found boolean default false)
+returns table (
+  query_clean       text,
+  search_type       text,
+  search_count      bigint,
+  is_found          boolean,
+  matched_nama      text,
+  tps_nomor         int,
+  first_searched_at timestamptz,
+  last_searched_at  timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select
+    sl.query_clean,
+    max(sl.search_type) as search_type,
+    count(*) as search_count,
+    bool_or(sl.is_found) as is_found,
+    max(sl.matched_nama) as matched_nama,
+    max(sl.tps_nomor) as tps_nomor,
+    min(sl.created_at) as first_searched_at,
+    max(sl.created_at) as last_searched_at
+  from public.search_logs sl
+  where (only_not_found is false or sl.is_found is false)
+  group by sl.query_clean
+  order by count(*) desc, max(sl.created_at) desc;
+end;
+$$;
+
+grant execute on function public.get_search_name_frequency(boolean) to authenticated;
 
 -- 8. FUNGSI REKAP TPS & JUMLAH PEMILIH (RPC DEFINER)
 create or replace function public.get_tps_summary()

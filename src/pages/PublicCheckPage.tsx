@@ -15,6 +15,7 @@ import {
   Info,
   HelpCircle,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { Button } from '../components/shared/Button';
 
@@ -111,7 +112,7 @@ export const PublicCheckPage: React.FC = () => {
             Cek Status Pemilih Anda
           </h2>
           <p className="text-slate-600 text-sm sm:text-base max-w-lg mx-auto leading-relaxed">
-            Masukkan NIK KTP atau Nama Lengkap Anda untuk mengetahui lokasi TPS tempat mencoblos di Desa Belega.
+            Masukkan Nama Lengkap Anda untuk mengetahui lokasi TPS tempat mencoblos di Desa Belega.
           </p>
         </div>
 
@@ -159,11 +160,13 @@ export const PublicCheckPage: React.FC = () => {
               <h4 className="font-bold text-slate-900 text-base group-hover:text-emerald-800">
                 Lokasi TPS Belega
               </h4>
-              <p className="text-xs text-slate-500">
-                Lihat daftar TPS 7 (Jasri), TPS 8 (Kebon), & TPS 9 (Belega/BTN).
+              <p className="text-xs text-slate-500 line-clamp-2">
+                {tpsList.length > 0
+                  ? `Lihat daftar ${tpsList.length} TPS: ${tpsList.map((item) => `TPS ${item.nomor_tps} (${item.nama_lokasi})`).join(', ')}.`
+                  : 'Lihat daftar lokasi TPS resmi di Desa Belega.'}
               </p>
             </div>
-            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 transition-colors mt-2" />
+            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-emerald-700 transition-colors mt-2 shrink-0 ml-2" />
           </div>
 
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-1">
@@ -195,9 +198,10 @@ export const PublicCheckPage: React.FC = () => {
           <div>
             <a
               href="/admin/login"
-              className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-1 font-medium"
+              className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center gap-1.5 font-medium"
             >
-              Portal Login Admin Panitia ↗
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Portal Login Admin Panitia</span>
             </a>
           </div>
         </div>
