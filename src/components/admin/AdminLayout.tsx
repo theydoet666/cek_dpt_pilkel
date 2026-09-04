@@ -11,8 +11,8 @@ import {
   X,
   Vote,
   ShieldCheck,
-  Image as ImageIcon,
   Search,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useAppLogo } from '../../context/LogoContext';
@@ -42,7 +42,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children, title }) => 
     { label: 'Data Pemilih', path: '/admin/data', icon: <Users className="w-5 h-5" /> },
     { label: 'Kelola TPS', path: '/admin/tps', icon: <Building className="w-5 h-5" /> },
     { label: 'Riwayat Upload', path: '/admin/riwayat', icon: <History className="w-5 h-5" /> },
-    { label: 'Pengaturan Logo', path: '/admin/settings', icon: <ImageIcon className="w-5 h-5" /> },
+    { label: 'Pengaturan & Keamanan', path: '/admin/settings', icon: <Settings className="w-5 h-5" /> },
   ];
 
   return (
