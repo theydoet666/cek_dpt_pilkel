@@ -168,9 +168,6 @@ declare
   clean_q text := trim(q);
   is_16_digit boolean;
   s_type text := 'NAMA';
-  found_count int := 0;
-  first_nama text := null;
-  first_tps int := null;
 begin
   if clean_q is null or length(clean_q) = 0 then
     return;
@@ -181,72 +178,74 @@ begin
     s_type := 'NIK';
   end if;
 
-  -- Buat temporary table penampung hasil pencarian
-  drop table if exists temp_search_results;
-  create temp table temp_search_results as
-  select
-    p.nama,
-    case
-      when p.nik ilike '%*%' then split_part(p.nik, '#', 1)
-      when length(split_part(p.nik, '#', 1)) >= 16 then concat(left(split_part(p.nik, '#', 1), 4), '********', right(split_part(p.nik, '#', 1), 4))
-      when length(split_part(p.nik, '#', 1)) >= 8 then concat(left(split_part(p.nik, '#', 1), 2), '****', right(split_part(p.nik, '#', 1), 2))
-      else split_part(p.nik, '#', 1)
-    end as nik_tersamar,
-    p.alamat,
-    p.tps_nomor,
-    coalesce(t.nama_lokasi, concat('Balai Banjar / Lokasi TPS ', p.tps_nomor)) as tps_lokasi,
-    p.status_dpt
-  from public.pemilih p
-  left join public.tps t on t.nomor_tps = p.tps_nomor
-  where p.is_active = true
-    and (
+  return query
+  with search_results as (
+    select
+      p.nama,
       case
-        when is_16_digit then
-          (
-            split_part(p.nik, '#', 1) = clean_q
-            or
+        when p.nik ilike '%*%' then split_part(p.nik, '#', 1)
+        when length(split_part(p.nik, '#', 1)) >= 16 then concat(left(split_part(p.nik, '#', 1), 4), '********', right(split_part(p.nik, '#', 1), 4))
+        when length(split_part(p.nik, '#', 1)) >= 8 then concat(left(split_part(p.nik, '#', 1), 2), '****', right(split_part(p.nik, '#', 1), 2))
+        else split_part(p.nik, '#', 1)
+      end as nik_tersamar,
+      p.alamat,
+      p.tps_nomor,
+      coalesce(t.nama_lokasi, concat('Balai Banjar / Lokasi TPS ', p.tps_nomor)) as tps_lokasi,
+      p.status_dpt
+    from public.pemilih p
+    left join public.tps t on t.nomor_tps = p.tps_nomor
+    where p.is_active = true
+      and (
+        case
+          when is_16_digit then
             (
-              p.nik like '%*%'
-              and length(split_part(split_part(p.nik, '#', 1), '*', 1)) >= 6
-              and left(clean_q, length(split_part(split_part(p.nik, '#', 1), '*', 1))) = split_part(split_part(p.nik, '#', 1), '*', 1)
+              split_part(p.nik, '#', 1) = clean_q
+              or
+              (
+                p.nik like '%*%'
+                and length(split_part(split_part(p.nik, '#', 1), '*', 1)) >= 6
+                and left(clean_q, length(split_part(split_part(p.nik, '#', 1), '*', 1))) = split_part(split_part(p.nik, '#', 1), '*', 1)
+              )
             )
-          )
-        else
-          (
-            length(clean_q) >= 3
-            and p.nama ilike '%' || clean_q || '%'
-          )
-      end
+          else
+            (
+              length(clean_q) >= 3
+              and p.nama ilike '%' || clean_q || '%'
+            )
+        end
+      )
+    limit 20
+  ),
+  log_entry as (
+    insert into public.search_logs (
+      query_raw,
+      query_clean,
+      search_type,
+      is_found,
+      result_count,
+      matched_nama,
+      tps_nomor,
+      created_at
     )
-  limit 20;
-
-  -- Hitung statistik hasil untuk dicatat ke log
-  select count(*), max(temp_search_results.nama), max(temp_search_results.tps_nomor)
-  into found_count, first_nama, first_tps
-  from temp_search_results;
-
-  -- Catat log pencarian secara atomik
-  insert into public.search_logs (
-    query_raw,
-    query_clean,
-    search_type,
-    is_found,
-    result_count,
-    matched_nama,
-    tps_nomor,
-    created_at
-  ) values (
-    q,
-    upper(clean_q),
-    s_type,
-    (found_count > 0),
-    found_count,
-    case when found_count = 1 then first_nama when found_count > 1 then concat(first_nama, ' (+', found_count - 1, ' lainnya)') else null end,
-    first_tps,
-    now()
-  );
-
-  return query select * from temp_search_results;
+    select
+      q,
+      upper(clean_q),
+      s_type,
+      (count(sr.nama) > 0),
+      count(sr.nama)::int,
+      case 
+        when count(sr.nama) = 1 then max(sr.nama) 
+        when count(sr.nama) > 1 then concat(max(sr.nama), ' (+', count(sr.nama) - 1, ' lainnya)') 
+        else null 
+      end,
+      max(sr.tps_nomor),
+      now()
+    from (select 1) dummy
+    left join search_results sr on true
+    returning id
+  )
+  select sr.nama, sr.nik_tersamar, sr.alamat, sr.tps_nomor, sr.tps_lokasi, sr.status_dpt
+  from search_results sr;
 end;
 $$;
 
