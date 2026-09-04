@@ -43,7 +43,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ketik NIK / NIK Tersamar atau Nama pemilih..."
+          placeholder="Ketik Nama Lengkap..."
           className="w-full pl-11 pr-12 py-3.5 sm:py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 text-base sm:text-lg focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 shadow-sm transition-all min-h-[52px]"
           disabled={loading}
           autoComplete="off"
@@ -100,16 +100,6 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
         >
           "GEDE ARIE"
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setQuery('5104021201910391');
-            onSearch('5104021201910391');
-          }}
-          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-medium"
-        >
-          NIK 16 Digit
         </button>
       </div>
     </form>

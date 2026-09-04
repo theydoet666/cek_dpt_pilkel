@@ -24,8 +24,11 @@ import {
   UserX,
   Sparkles,
   ShieldAlert,
+  ArrowUpDown,
 } from 'lucide-react';
 import clsx from 'clsx';
+
+export type SortOption = 'latest' | 'oldest' | 'frequency_desc' | 'frequency_asc' | 'name_asc' | 'name_desc';
 
 // Demo initial mock logs jika belum ada data di Supabase
 const INITIAL_DEMO_LOGS: SearchLog[] = [
@@ -133,6 +136,25 @@ function formatTimeAgo(dateString: string): string {
   }
 }
 
+function getSortLabel(sort: SortOption): string {
+  switch (sort) {
+    case 'latest':
+      return 'Data Terakhir Masuk (Terbaru)';
+    case 'oldest':
+      return 'Data Terlama';
+    case 'frequency_desc':
+      return 'Frekuensi Dicek (Terbanyak)';
+    case 'frequency_asc':
+      return 'Frekuensi Dicek (Tersedikit)';
+    case 'name_asc':
+      return 'Nama (A - Z)';
+    case 'name_desc':
+      return 'Nama (Z - A)';
+    default:
+      return 'Data Terakhir Masuk';
+  }
+}
+
 export const AdminSearchLogsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'frequency' | 'not_found' | 'raw_logs'>('frequency');
   const [logs, setLogs] = useState<SearchLog[]>(INITIAL_DEMO_LOGS);
@@ -147,6 +169,7 @@ export const AdminSearchLogsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'found' | 'not_found'>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('latest');
   const [needsMigration, setNeedsMigration] = useState(false);
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
@@ -284,7 +307,9 @@ export const AdminSearchLogsPage: React.FC = () => {
       }
     });
 
-    const list = Array.from(map.values()).sort((a, b) => b.search_count - a.search_count);
+    const list = Array.from(map.values()).sort(
+      (a, b) => new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime()
+    );
     setFrequencyList(list);
   };
 
@@ -313,14 +338,14 @@ export const AdminSearchLogsPage: React.FC = () => {
     fetchLogsData();
   }, []);
 
-  // Reset page when tab or filter changes
+  // Reset page when tab, filter, or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, searchFilter, statusFilter]);
+  }, [activeTab, searchFilter, statusFilter, sortBy]);
 
-  // Filtered Frequency List
-  const filteredFrequencyList = useMemo(() => {
-    return frequencyList.filter((item) => {
+  // Sorted & Filtered Frequency List
+  const sortedFrequencyList = useMemo(() => {
+    const filtered = frequencyList.filter((item) => {
       const matchSearch =
         item.query_clean.toLowerCase().includes(searchFilter.toLowerCase()) ||
         (item.matched_nama && item.matched_nama.toLowerCase().includes(searchFilter.toLowerCase()));
@@ -330,18 +355,70 @@ export const AdminSearchLogsPage: React.FC = () => {
 
       return matchSearch && matchStatus;
     });
-  }, [frequencyList, searchFilter, statusFilter]);
 
-  // List Nama Tidak Ditemukan Khusus
-  const notFoundList = useMemo(() => {
-    return frequencyList
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'latest') {
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.last_searched_at).getTime() - new Date(b.last_searched_at).getTime();
+      }
+      if (sortBy === 'frequency_desc') {
+        const diff = b.search_count - a.search_count;
+        if (diff !== 0) return diff;
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'frequency_asc') {
+        const diff = a.search_count - b.search_count;
+        if (diff !== 0) return diff;
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'name_asc') {
+        return a.query_clean.localeCompare(b.query_clean);
+      }
+      if (sortBy === 'name_desc') {
+        return b.query_clean.localeCompare(a.query_clean);
+      }
+      return 0;
+    });
+  }, [frequencyList, searchFilter, statusFilter, sortBy]);
+
+  // List Nama Tidak Ditemukan Khusus (Sorted & Filtered)
+  const sortedNotFoundList = useMemo(() => {
+    const filtered = frequencyList
       .filter((item) => !item.is_found)
       .filter((item) => item.query_clean.toLowerCase().includes(searchFilter.toLowerCase()));
-  }, [frequencyList, searchFilter]);
 
-  // Filtered Raw Logs
-  const filteredRawLogs = useMemo(() => {
-    return logs.filter((item) => {
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'latest') {
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.last_searched_at).getTime() - new Date(b.last_searched_at).getTime();
+      }
+      if (sortBy === 'frequency_desc') {
+        const diff = b.search_count - a.search_count;
+        if (diff !== 0) return diff;
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'frequency_asc') {
+        const diff = a.search_count - b.search_count;
+        if (diff !== 0) return diff;
+        return new Date(b.last_searched_at).getTime() - new Date(a.last_searched_at).getTime();
+      }
+      if (sortBy === 'name_asc') {
+        return a.query_clean.localeCompare(b.query_clean);
+      }
+      if (sortBy === 'name_desc') {
+        return b.query_clean.localeCompare(a.query_clean);
+      }
+      return 0;
+    });
+  }, [frequencyList, searchFilter, sortBy]);
+
+  // Sorted & Filtered Raw Logs
+  const sortedRawLogs = useMemo(() => {
+    const filtered = logs.filter((item) => {
       const matchSearch =
         item.query_raw.toLowerCase().includes(searchFilter.toLowerCase()) ||
         item.query_clean.toLowerCase().includes(searchFilter.toLowerCase()) ||
@@ -352,25 +429,44 @@ export const AdminSearchLogsPage: React.FC = () => {
 
       return matchSearch && matchStatus;
     });
-  }, [logs, searchFilter, statusFilter]);
+
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'latest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      if (sortBy === 'name_asc') {
+        return a.query_raw.localeCompare(b.query_raw);
+      }
+      if (sortBy === 'name_desc') {
+        return b.query_raw.localeCompare(a.query_raw);
+      }
+      if (sortBy === 'frequency_desc' || sortBy === 'frequency_asc') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return 0;
+    });
+  }, [logs, searchFilter, statusFilter, sortBy]);
 
   // Pagination Slicing
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     if (activeTab === 'frequency') {
-      return filteredFrequencyList.slice(startIndex, startIndex + pageSize);
+      return sortedFrequencyList.slice(startIndex, startIndex + pageSize);
     } else if (activeTab === 'not_found') {
-      return notFoundList.slice(startIndex, startIndex + pageSize);
+      return sortedNotFoundList.slice(startIndex, startIndex + pageSize);
     } else {
-      return filteredRawLogs.slice(startIndex, startIndex + pageSize);
+      return sortedRawLogs.slice(startIndex, startIndex + pageSize);
     }
-  }, [activeTab, filteredFrequencyList, notFoundList, filteredRawLogs, currentPage]);
+  }, [activeTab, sortedFrequencyList, sortedNotFoundList, sortedRawLogs, currentPage]);
 
   const totalItemCount = useMemo(() => {
-    if (activeTab === 'frequency') return filteredFrequencyList.length;
-    if (activeTab === 'not_found') return notFoundList.length;
-    return filteredRawLogs.length;
-  }, [activeTab, filteredFrequencyList.length, notFoundList.length, filteredRawLogs.length]);
+    if (activeTab === 'frequency') return sortedFrequencyList.length;
+    if (activeTab === 'not_found') return sortedNotFoundList.length;
+    return sortedRawLogs.length;
+  }, [activeTab, sortedFrequencyList.length, sortedNotFoundList.length, sortedRawLogs.length]);
 
   const totalPages = Math.max(1, Math.ceil(totalItemCount / pageSize));
 
@@ -382,7 +478,7 @@ export const AdminSearchLogsPage: React.FC = () => {
 
     if (activeTab === 'frequency') {
       headers = ['No', 'Nama / Query', 'Tipe', 'Frekuensi Dicek', 'Status DPT', 'Nama Cocok', 'TPS', 'Terakhir Dicek'];
-      rows = filteredFrequencyList.map((item, idx) => [
+      rows = sortedFrequencyList.map((item, idx) => [
         String(idx + 1),
         `"${item.query_clean}"`,
         item.search_type,
@@ -394,7 +490,7 @@ export const AdminSearchLogsPage: React.FC = () => {
       ]);
     } else if (activeTab === 'not_found') {
       headers = ['No', 'Nama Warga Belum Terdaftar', 'Jumlah Percobaan Cek', 'Terakhir Dicari'];
-      rows = notFoundList.map((item, idx) => [
+      rows = sortedNotFoundList.map((item, idx) => [
         String(idx + 1),
         `"${item.query_clean}"`,
         String(item.search_count),
@@ -403,7 +499,7 @@ export const AdminSearchLogsPage: React.FC = () => {
       filename = `daftar-warga-tidak-terdaftar-dpt-${new Date().toISOString().split('T')[0]}.csv`;
     } else {
       headers = ['Waktu', 'Kata Kunci', 'Tipe', 'Status', 'Hasil', 'TPS'];
-      rows = filteredRawLogs.map((item) => [
+      rows = sortedRawLogs.map((item) => [
         new Date(item.created_at).toLocaleString('id-ID'),
         `"${item.query_raw}"`,
         item.search_type,
@@ -636,15 +732,15 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
         </div>
 
         {/* Main Table Container */}
-        <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 shadow-sm space-y-5">
-          {/* Controls Bar: Tabs, Search & Filter */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-            {/* Elegant Segmented Tab Switcher */}
-            <div className="flex items-center bg-slate-100/90 p-1.5 rounded-2xl gap-1 overflow-x-auto w-full lg:w-auto">
+        <div className="bg-white border border-slate-200/90 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
+          {/* Controls Bar Header */}
+          <div className="space-y-4 pb-4 border-b border-slate-100">
+            {/* Top Row: Segmented Tab Switcher */}
+            <div className="flex items-center bg-slate-100 p-1.5 rounded-2xl gap-1 overflow-x-auto w-full">
               <button
                 onClick={() => setActiveTab('frequency')}
                 className={clsx(
-                  'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap',
+                  'px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0',
                   activeTab === 'frequency'
                     ? 'bg-white text-emerald-950 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -652,7 +748,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
               >
                 <Flame className={clsx('w-4 h-4', activeTab === 'frequency' ? 'text-amber-500' : 'text-slate-400')} />
                 <span>Rekap Frekuensi Nama</span>
-                <span className={clsx('text-[11px] px-1.5 py-0.5 rounded-md font-bold', activeTab === 'frequency' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-200 text-slate-600')}>
+                <span className={clsx('text-[11px] px-2 py-0.5 rounded-full font-bold', activeTab === 'frequency' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-200 text-slate-600')}>
                   {frequencyList.length}
                 </span>
               </button>
@@ -660,7 +756,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
               <button
                 onClick={() => setActiveTab('not_found')}
                 className={clsx(
-                  'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap',
+                  'px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0',
                   activeTab === 'not_found'
                     ? 'bg-rose-700 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -668,7 +764,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
               >
                 <UserX className="w-4 h-4 text-rose-300" />
                 <span>Belum Terdaftar</span>
-                <span className={clsx('text-[11px] px-1.5 py-0.5 rounded-md font-bold', activeTab === 'not_found' ? 'bg-rose-800 text-rose-100' : 'bg-rose-100 text-rose-800')}>
+                <span className={clsx('text-[11px] px-2 py-0.5 rounded-full font-bold', activeTab === 'not_found' ? 'bg-rose-800 text-rose-100' : 'bg-rose-100 text-rose-800')}>
                   {stats.unique_not_found}
                 </span>
               </button>
@@ -676,39 +772,59 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
               <button
                 onClick={() => setActiveTab('raw_logs')}
                 className={clsx(
-                  'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap',
+                  'px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0',
                   activeTab === 'raw_logs'
                     ? 'bg-slate-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 )}
               >
                 <Clock className="w-4 h-4 text-slate-400" />
-                <span>Audit Log</span>
-                <span className={clsx('text-[11px] px-1.5 py-0.5 rounded-md font-bold', activeTab === 'raw_logs' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-600')}>
+                <span>Audit Log Transaksi</span>
+                <span className={clsx('text-[11px] px-2 py-0.5 rounded-full font-bold', activeTab === 'raw_logs' ? 'bg-slate-800 text-slate-200' : 'bg-slate-200 text-slate-600')}>
                   {logs.length}
                 </span>
               </button>
             </div>
 
-            {/* Filter and Search Bar */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="relative min-w-[220px] flex-1 sm:flex-initial">
+            {/* Bottom Row: Search, Sort Dropdown & Status Filter */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+              {/* Search Bar */}
+              <div className="relative lg:col-span-5 w-full">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Cari nama atau query..."
+                  placeholder="Cari nama atau kata kunci..."
                   value={searchFilter}
                   onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium placeholder:text-slate-400"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 font-medium placeholder:text-slate-400"
                 />
               </div>
 
-              {activeTab !== 'not_found' && (
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              {/* Sort Dropdown */}
+              <div className="lg:col-span-4 w-full flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2.5 rounded-xl text-xs sm:text-sm">
+                <ArrowUpDown className="w-4 h-4 text-emerald-700 shrink-0" />
+                <span className="text-slate-500 font-medium shrink-0">Urutkan:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="bg-transparent font-bold text-slate-800 focus:outline-none cursor-pointer w-full truncate"
+                >
+                  <option value="latest">⚡ Data Terakhir Masuk (Terbaru)</option>
+                  <option value="oldest">⌛ Data Terlama</option>
+                  <option value="frequency_desc">🔥 Frekuensi Dicek (Terbanyak)</option>
+                  <option value="frequency_asc">🧊 Frekuensi Dicek (Tersedikit)</option>
+                  <option value="name_asc">🔤 Nama (A - Z)</option>
+                  <option value="name_desc">🔤 Nama (Z - A)</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              {activeTab !== 'not_found' ? (
+                <div className="lg:col-span-3 w-full flex items-center justify-center bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <button
                     onClick={() => setStatusFilter('all')}
                     className={clsx(
-                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors',
+                      'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors text-center',
                       statusFilter === 'all' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-500'
                     )}
                   >
@@ -717,7 +833,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                   <button
                     onClick={() => setStatusFilter('found')}
                     className={clsx(
-                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors',
+                      'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors text-center',
                       statusFilter === 'found' ? 'bg-emerald-700 text-white shadow-2xs font-bold' : 'text-slate-500'
                     )}
                   >
@@ -726,30 +842,82 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                   <button
                     onClick={() => setStatusFilter('not_found')}
                     className={clsx(
-                      'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors',
+                      'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors text-center',
                       statusFilter === 'not_found' ? 'bg-rose-700 text-white shadow-2xs font-bold' : 'text-slate-500'
                     )}
                   >
                     Gagal
                   </button>
                 </div>
+              ) : (
+                <div className="lg:col-span-3 hidden lg:block" />
               )}
+            </div>
+          </div>
+
+          {/* Active Filter & Sort Info Banner */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs text-slate-600 font-medium">
+            <div>
+              Menampilkan <strong className="text-slate-900 font-bold">{totalItemCount}</strong> data{' '}
+              {activeTab === 'frequency'
+                ? 'rekap frekuensi'
+                : activeTab === 'not_found'
+                ? 'warga belum terdaftar'
+                : 'audit log'}
+              {searchFilter && (
+                <span>
+                  {' '}dengan kata kunci "<strong className="text-emerald-800">{searchFilter}</strong>"
+                </span>
+              )}
+            </div>
+            <div className="text-slate-500 text-[11px]">
+              Urutan: <span className="text-emerald-900 font-bold underline decoration-emerald-500/50">{getSortLabel(sortBy)}</span>
             </div>
           </div>
 
           {/* TAB 1: REKAP FREKUENSI NAMA UNIK */}
           {activeTab === 'frequency' && (
             <div className="space-y-4">
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-slate-900 text-white font-semibold">
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs bg-white">
+                <table className="w-full text-left text-xs sm:text-sm min-w-[700px]">
+                  <thead className="bg-slate-900 text-white font-semibold uppercase text-[11px] tracking-wider">
                     <tr>
-                      <th className="py-3 px-3.5 w-12 text-center text-slate-400">#</th>
-                      <th className="py-3 px-3.5">Nama / Query yang Dicari</th>
-                      <th className="py-3 px-3.5 text-center">Frekuensi Cek</th>
-                      <th className="py-3 px-3.5">Status di DPT</th>
-                      <th className="py-3 px-3.5">Hasil Pemilih & TPS</th>
-                      <th className="py-3 px-3.5 text-right">Terakhir Dicari</th>
+                      <th className="py-3.5 px-4 w-12 text-center text-slate-400">#</th>
+                      <th
+                        className="py-3.5 px-4 cursor-pointer hover:bg-slate-800 transition-colors select-none"
+                        onClick={() => setSortBy(sortBy === 'name_asc' ? 'name_desc' : 'name_asc')}
+                        title="Klik untuk mengurutkan berdasarkan nama"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Nama / Query yang Dicari</span>
+                          {sortBy === 'name_asc' && ' ↑'}
+                          {sortBy === 'name_desc' && ' ↓'}
+                        </div>
+                      </th>
+                      <th
+                        className="py-3.5 px-4 text-center cursor-pointer hover:bg-slate-800 transition-colors select-none w-36"
+                        onClick={() => setSortBy(sortBy === 'frequency_desc' ? 'frequency_asc' : 'frequency_desc')}
+                        title="Klik untuk mengurutkan berdasarkan frekuensi"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Frekuensi Cek</span>
+                          {sortBy === 'frequency_desc' && ' ↓'}
+                          {sortBy === 'frequency_asc' && ' ↑'}
+                        </div>
+                      </th>
+                      <th className="py-3.5 px-4 w-36">Status di DPT</th>
+                      <th className="py-3.5 px-4">Hasil Pemilih & TPS</th>
+                      <th
+                        className="py-3.5 px-4 text-right cursor-pointer hover:bg-slate-800 transition-colors select-none w-36"
+                        onClick={() => setSortBy(sortBy === 'latest' ? 'oldest' : 'latest')}
+                        title="Klik untuk mengurutkan berdasarkan waktu terakhir dicek"
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Terakhir Dicari</span>
+                          {sortBy === 'latest' && ' ↓'}
+                          {sortBy === 'oldest' && ' ↑'}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -770,19 +938,19 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                       (paginatedData as SearchFrequencyItem[]).map((item, idx) => {
                         const globalIndex = (currentPage - 1) * pageSize + idx + 1;
                         return (
-                          <tr key={item.query_clean} className="hover:bg-slate-50/90 transition-colors">
-                            <td className="py-3.5 px-3.5 text-center text-slate-400 font-mono font-bold text-xs">
+                          <tr key={item.query_clean} className="hover:bg-emerald-50/40 transition-colors">
+                            <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-bold text-xs">
                               {globalIndex}
                             </td>
-                            <td className="py-3.5 px-3.5">
+                            <td className="py-3.5 px-4">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-900">{item.query_clean}</span>
-                                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                <span className="font-extrabold text-slate-900 text-sm tracking-tight">{item.query_clean}</span>
+                                <span className="text-[10px] uppercase font-extrabold px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
                                   {item.search_type}
                                 </span>
                               </div>
                             </td>
-                            <td className="py-3.5 px-3.5 text-center">
+                            <td className="py-3.5 px-4 text-center">
                               <span
                                 className={clsx(
                                   'inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black shadow-2xs',
@@ -797,23 +965,23 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                                 {item.search_count}x Dicek
                               </span>
                             </td>
-                            <td className="py-3.5 px-3.5">
+                            <td className="py-3.5 px-4">
                               {item.is_found ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Terdaftar
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 shadow-2xs whitespace-nowrap">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Terdaftar
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> Belum Ada
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 shadow-2xs whitespace-nowrap">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" /> Belum Ada
                                 </span>
                               )}
                             </td>
-                            <td className="py-3.5 px-3.5 text-slate-700">
+                            <td className="py-3.5 px-4 text-slate-700">
                               {item.matched_nama ? (
                                 <div>
                                   <div className="font-semibold text-slate-900 line-clamp-1">{item.matched_nama}</div>
                                   {item.tps_nomor && (
-                                    <div className="text-xs text-emerald-700 font-medium flex items-center gap-1 mt-0.5">
+                                    <div className="text-xs text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
                                       <MapPin className="w-3 h-3 shrink-0 text-emerald-600" />
                                       <span>TPS {String(item.tps_nomor).padStart(2, '0')}</span>
                                     </div>
@@ -823,7 +991,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                                 <span className="text-slate-400 italic text-xs">-</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-3.5 text-right font-medium text-slate-600 text-xs">
+                            <td className="py-3.5 px-4 text-right font-medium text-slate-600 text-xs whitespace-nowrap">
                               <span title={new Date(item.last_searched_at).toLocaleString('id-ID')}>
                                 {formatTimeAgo(item.last_searched_at)}
                               </span>
@@ -842,7 +1010,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
           {activeTab === 'not_found' && (
             <div className="space-y-4">
               {/* Notice Banner */}
-              <div className="bg-rose-50/70 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 text-xs sm:text-sm text-rose-950 shadow-2xs">
+              <div className="bg-rose-50/80 border border-rose-200 rounded-2xl p-4 flex items-start gap-3 text-xs sm:text-sm text-rose-950 shadow-2xs">
                 <ShieldAlert className="w-5 h-5 text-rose-700 shrink-0 mt-0.5" />
                 <div className="space-y-0.5">
                   <h4 className="font-bold text-rose-900">Temuan Warga Belum Terdaftar di DPT</h4>
@@ -852,15 +1020,45 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                 </div>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-slate-900 text-white font-semibold">
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs bg-white">
+                <table className="w-full text-left text-xs sm:text-sm min-w-[650px]">
+                  <thead className="bg-slate-900 text-white font-semibold uppercase text-[11px] tracking-wider">
                     <tr>
-                      <th className="py-3 px-3.5 w-12 text-center text-slate-400">#</th>
-                      <th className="py-3 px-3.5">Nama Warga yang Dicari</th>
-                      <th className="py-3 px-3.5 text-center">Jumlah Percobaan</th>
-                      <th className="py-3 px-3.5">Status Verifikasi</th>
-                      <th className="py-3 px-3.5 text-right">Waktu Terakhir Dicari</th>
+                      <th className="py-3.5 px-4 w-12 text-center text-slate-400">#</th>
+                      <th
+                        className="py-3.5 px-4 cursor-pointer hover:bg-slate-800 transition-colors select-none"
+                        onClick={() => setSortBy(sortBy === 'name_asc' ? 'name_desc' : 'name_asc')}
+                        title="Klik untuk mengurutkan berdasarkan nama"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Nama Warga yang Dicari</span>
+                          {sortBy === 'name_asc' && ' ↑'}
+                          {sortBy === 'name_desc' && ' ↓'}
+                        </div>
+                      </th>
+                      <th
+                        className="py-3.5 px-4 text-center cursor-pointer hover:bg-slate-800 transition-colors select-none w-36"
+                        onClick={() => setSortBy(sortBy === 'frequency_desc' ? 'frequency_asc' : 'frequency_desc')}
+                        title="Klik untuk mengurutkan berdasarkan jumlah percobaan"
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Jumlah Percobaan</span>
+                          {sortBy === 'frequency_desc' && ' ↓'}
+                          {sortBy === 'frequency_asc' && ' ↑'}
+                        </div>
+                      </th>
+                      <th className="py-3.5 px-4 w-44">Status Verifikasi</th>
+                      <th
+                        className="py-3.5 px-4 text-right cursor-pointer hover:bg-slate-800 transition-colors select-none w-36"
+                        onClick={() => setSortBy(sortBy === 'latest' ? 'oldest' : 'latest')}
+                        title="Klik untuk mengurutkan berdasarkan waktu terakhir dicari"
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Waktu Terakhir Dicari</span>
+                          {sortBy === 'latest' && ' ↓'}
+                          {sortBy === 'oldest' && ' ↑'}
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -886,10 +1084,10 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                         const globalIndex = (currentPage - 1) * pageSize + idx + 1;
                         return (
                           <tr key={item.query_clean} className="hover:bg-rose-50/40 transition-colors">
-                            <td className="py-3.5 px-3.5 text-center text-slate-400 font-mono font-bold text-xs">
+                            <td className="py-3.5 px-4 text-center text-slate-400 font-mono font-bold text-xs">
                               {globalIndex}
                             </td>
-                            <td className="py-3.5 px-3.5 font-bold text-rose-950">
+                            <td className="py-3.5 px-4 font-bold text-rose-950 text-sm">
                               <div className="flex items-center gap-2">
                                 <span>{item.query_clean}</span>
                                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 bg-rose-100 text-rose-800 rounded">
@@ -897,17 +1095,17 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                                 </span>
                               </div>
                             </td>
-                            <td className="py-3.5 px-3.5 text-center">
-                              <span className="inline-block px-3 py-1 bg-rose-100 text-rose-900 rounded-full text-xs font-black border border-rose-200">
+                            <td className="py-3.5 px-4 text-center">
+                              <span className="inline-block px-3 py-1 bg-rose-100 text-rose-900 rounded-full text-xs font-black border border-rose-200 shadow-2xs">
                                 {item.search_count}x Dicari
                               </span>
                             </td>
-                            <td className="py-3.5 px-3.5">
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> Tidak Ditemukan di Database
+                            <td className="py-3.5 px-4">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 shadow-2xs whitespace-nowrap">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" /> Tidak Ditemukan di Database
                               </span>
                             </td>
-                            <td className="py-3.5 px-3.5 text-right font-medium text-slate-600 text-xs">
+                            <td className="py-3.5 px-4 text-right font-medium text-slate-600 text-xs whitespace-nowrap">
                               <span title={new Date(item.last_searched_at).toLocaleString('id-ID')}>
                                 {formatTimeAgo(item.last_searched_at)}
                               </span>
@@ -925,16 +1123,36 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
           {/* TAB 3: AUDIT LOG TRANSAKSI */}
           {activeTab === 'raw_logs' && (
             <div className="space-y-4">
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                <table className="w-full text-left text-xs sm:text-sm">
-                  <thead className="bg-slate-900 text-white font-semibold">
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-2xs bg-white">
+                <table className="w-full text-left text-xs sm:text-sm min-w-[720px]">
+                  <thead className="bg-slate-900 text-white font-semibold uppercase text-[11px] tracking-wider">
                     <tr>
-                      <th className="py-3 px-3.5">Waktu Pencarian</th>
-                      <th className="py-3 px-3.5">Kata Kunci / Input</th>
-                      <th className="py-3 px-3.5 text-center">Tipe</th>
-                      <th className="py-3 px-3.5">Hasil</th>
-                      <th className="py-3 px-3.5">Pemilih Terkait</th>
-                      <th className="py-3 px-3.5">TPS</th>
+                      <th
+                        className="py-3.5 px-4 cursor-pointer hover:bg-slate-800 transition-colors select-none w-36"
+                        onClick={() => setSortBy(sortBy === 'latest' ? 'oldest' : 'latest')}
+                        title="Klik untuk mengurutkan berdasarkan waktu pencarian"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Waktu Pencarian</span>
+                          {sortBy === 'latest' && ' ↓'}
+                          {sortBy === 'oldest' && ' ↑'}
+                        </div>
+                      </th>
+                      <th
+                        className="py-3.5 px-4 cursor-pointer hover:bg-slate-800 transition-colors select-none"
+                        onClick={() => setSortBy(sortBy === 'name_asc' ? 'name_desc' : 'name_asc')}
+                        title="Klik untuk mengurutkan berdasarkan kata kunci / nama"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Kata Kunci / Input</span>
+                          {sortBy === 'name_asc' && ' ↑'}
+                          {sortBy === 'name_desc' && ' ↓'}
+                        </div>
+                      </th>
+                      <th className="py-3.5 px-4 text-center w-20">Tipe</th>
+                      <th className="py-3.5 px-4 w-36">Hasil</th>
+                      <th className="py-3.5 px-4">Pemilih Terkait</th>
+                      <th className="py-3.5 px-4 w-28">TPS</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -954,7 +1172,7 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                     ) : (
                       (paginatedData as SearchLog[]).map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/90 transition-colors">
-                          <td className="py-3.5 px-3.5 text-slate-500 font-mono text-xs whitespace-nowrap">
+                          <td className="py-3.5 px-4 text-slate-500 font-mono text-xs whitespace-nowrap">
                             <span title={new Date(item.created_at).toLocaleString('id-ID')}>
                               {new Date(item.created_at).toLocaleString('id-ID', {
                                 day: '2-digit',
@@ -965,31 +1183,31 @@ grant execute on function public.get_search_name_frequency(boolean) to authentic
                               })}
                             </span>
                           </td>
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900">
+                          <td className="py-3.5 px-4 font-bold text-slate-900 text-sm">
                             {item.query_raw}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center">
-                            <span className="uppercase font-bold text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700">
+                          <td className="py-3.5 px-4 text-center">
+                            <span className="uppercase font-extrabold text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700">
                               {item.search_type}
                             </span>
                           </td>
-                          <td className="py-3.5 px-3.5">
+                          <td className="py-3.5 px-4">
                             {item.is_found ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Ditemukan ({item.result_count})
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 shadow-2xs whitespace-nowrap">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Ditemukan ({item.result_count})
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> 0 Hasil
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200 shadow-2xs whitespace-nowrap">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" /> 0 Hasil
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-3.5 text-slate-700 font-medium">
+                          <td className="py-3.5 px-4 text-slate-700 font-medium">
                             {item.matched_nama || <span className="text-slate-400 italic text-xs">-</span>}
                           </td>
-                          <td className="py-3.5 px-3.5">
+                          <td className="py-3.5 px-4">
                             {item.tps_nomor ? (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded-md font-bold text-xs">
+                              <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 rounded-md font-bold text-xs whitespace-nowrap">
                                 TPS {String(item.tps_nomor).padStart(2, '0')}
                               </span>
                             ) : (
