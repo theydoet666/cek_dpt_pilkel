@@ -1,9 +1,9 @@
 # PRD (Product Requirement Document)
 # Sistem Pengecekan DPT Online — Pemilihan Perbekel Desa Belega
 
-**Versi:** 1.5 (Terkini & Tervalidasi)  
-**Tanggal Pembaruan:** 3 September 2026  
-**Stack:** React 19 + TypeScript + Vite + Tailwind CSS (Frontend) · Supabase (PostgreSQL, Auth, Storage, RPC Definer)  
+**Versi:** 1.6 (Terkini & Tervalidasi)  
+**Tanggal Pembaruan:** 4 September 2026  
+**Stack:** React 19 + TypeScript + Vite + Tailwind CSS (Frontend) · Supabase (PostgreSQL, Auth, Storage, RPC Definer, Edge Functions)  
 **Repositori GitHub:** [https://github.com/theydoet666/cek_dpt_pilkel.git](https://github.com/theydoet666/cek_dpt_pilkel.git)
 
 ---
@@ -14,9 +14,10 @@ Panitia Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar m
 
 **Tujuan utama:**
 1. **Kemudahan Warga**: Warga dapat mengecek status pemilih (terdaftar/tidak) secara mandiri melalui NIK atau Nama, lalu melihat alamat dan lokasi TPS mencoblos.
-2. **Kemudahan Panitia (Admin)**: Panitia dapat mengunggah file Excel rekap DPT dengan deteksi kolom cerdas, mengelola data manual, mengelola lokasi TPS, mengatur logo web/favicon, serta menghapus/mereset data DPT dengan aman.
+2. **Kemudahan Panitia (Admin)**: Panitia dapat mengunggah file Excel rekap DPT dengan deteksi kolom cerdas, mengelola data manual, mengelola lokasi TPS, mengatur logo web/favicon, memantau log & analitik pengecekan warga, mengganti password akun admin, serta menghapus/mereset data DPT dengan aman.
 3. **Kepatuhan Privasi (UU PDP)**: NIK warga selalu disamarkan di halaman publik dan tidak pernah terekspos penuh ke publik.
 4. **Desain Modern & Mobile-First**: Antarmuka responsif dan ramah pengguna di semua ukuran layar (layar HP hingga Desktop).
+5. **Skalabilitas & Keamanan Konkurensi**: Tahan beban tinggi di hari-H pemilihan saat ribuan warga mengakses portal pencarian secara bersamaan (bebas table-lock / collision).
 
 ---
 
@@ -33,13 +34,17 @@ Panitia Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar m
   - Upload Excel DPT dengan deteksi header otomatis, penanganan NIK fleksibel/tersamar, dan batch upsert.
   - Kelola Data Pemilih: CRUD data pemilih individual, filter TPS, pencarian, dan fitur **Hapus Semua Data DPT** (Double-Confirmation).
   - Kelola Data TPS: CRUD lokasi TPS (Nomor, Nama Lokasi, Alamat, Dusun Cakupan).
-  - Pengaturan Branding: Unggah Logo resmi Panitia / Desa Belega yang otomatis mengubah logo Header Publik, Sidebar Admin, Login, dan Favicon browser tab.
+  - **Log & Analitik Pengecekan Nama**: Halaman admin memantau riwayat pencarian publik, frekuensi pencarian per nama/NIK, pencarian tidak ditemukan, stat cards analitik, filter tanggal/query, dan ekspor data CSV.
+  - **Pengaturan & Keamanan (Ganti Password & Branding)**: Unggah Logo resmi Panitia / Desa Belega (header, sidebar, login, favicon) dan fitur **Ganti Password Admin** langsung dari panel admin dengan re-autentikasi password lama & password strength meter.
   - Riwayat Batch Upload: Pencatatan otomatis riwayat unggahan file Excel.
 - **Backend & Database**:
   - Database PostgreSQL di Supabase dengan Row Level Security (RLS) aktif di seluruh tabel.
-  - PostgreSQL RPC Functions: `search_pemilih()` dan `get_tps_summary()`.
+  - PostgreSQL RPC Functions: `search_pemilih()` (PL/pgSQL berbasis CTE untuk konkurensi tinggi), `get_tps_summary()`, `get_search_stats()`, dan `get_search_name_frequency()`.
+  - Supabase Edge Function `cek-dpt-search` dengan CORS whitelist dinamis (`ALLOWED_ORIGINS`).
 - **Keamanan & Kinerja**:
   - Anti-scraping rate limiting pada pencarian publik.
+  - Audit Keamanan (Skor 97/100): Pengamanan CORS whitelist dinamis, penutupan login bypass di production, validasi input query.
+  - Refaktor PL/pgSQL `search_pemilih()` menggunakan Common Table Expression (CTE) tanpa `CREATE TEMP TABLE` untuk keamanan eksekusi serentak (concurrent access).
   - Zero-vulnerability Excel parser (`read-excel-file/browser`).
   - React ErrorBoundary untuk pemulihan runtime yang mulus.
 
@@ -55,7 +60,7 @@ Panitia Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar m
 | Aktor | Peran | Hak Akses |
 |---|---|---|
 | **Warga / Pemilih (Publik)** | Pengguna umum tanpa login | Mengakses halaman utama, mencari DPT by NIK/Nama, melihat hasil dengan NIK tersamar, melihat daftar lokasi TPS |
-| **Admin Panitia** | Petugas / Panitia Pemilihan | Login admin, melihat dashboard statistik dinamis, upload Excel DPT, CRUD pemilih, CRUD TPS, ganti logo/favicon, hapus semua data |
+| **Admin Panitia** | Petugas / Panitia Pemilihan | Login admin, melihat dashboard statistik dinamis, upload Excel DPT, CRUD pemilih, CRUD TPS, memantau log & analitik pengecekan, ganti password, ganti logo/favicon, hapus semua data |
 | **Super Admin** | Ketua Panitia | Seluruh hak akses admin + pengelolaan akun panitia |
 
 ---
@@ -83,6 +88,7 @@ Panitia Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar m
 - **F-04 Autentikasi & Proteksi Rute**:
   - Login via Supabase Auth dengan sesi JWT aman.
   - `ProtectedRoute` memastikan rute `/admin/*` hanya dapat diakses oleh admin yang terotentikasi.
+  - Fitur Demo Mode Bypass yang dibatasi strictly pada environment development (`import.meta.env.DEV`).
 - **F-05 Dashboard Statistik Dinamis**:
   - Kartu Ringkasan: Total DPT, Total TPS, Total Laki-laki (% rasio), Total Perempuan (% rasio).
   - Sebaran Pemilih per Lokasi TPS: Menampilkan seluruh TPS yang terdaftar (TPS 01 s/d TPS 09+) beserta jumlah pemilih dan persentase progress bar.
@@ -100,29 +106,36 @@ Panitia Pemilihan Perbekel Desa Belega, Kecamatan Blahbatuh, Kabupaten Gianyar m
 - **F-08 Kelola Tempat Pemungutan Suara (TPS)**:
   - CRUD lengkap TPS: Tambah TPS baru, Edit Lokasi/Alamat/Dusun, dan Hapus TPS (dengan peringatan jika ada pemilih terdaftar).
   - Perhitungan jumlah pemilih akurat per TPS via query tanpa batas baris.
-- **F-09 Pengaturan Logo & Favicon**:
+- **F-09 Pengaturan & Keamanan (Ganti Password & Branding)**:
+  - **Fitur Ganti Password**: Form ganti password dengan re-autentikasi password lama, indikator visual *Password Strength Meter* (5 level), konfirmasi password, dan toggle show/hide password.
   - Unggah logo resmi Panitia/Desa Belega (format PNG, JPG, WEBP dengan proteksi XSS).
   - Mengubah tampilan logo di Header Publik, Sidebar Admin, Halaman Login, serta Favicon tab browser secara otomatis.
 - **F-10 Riwayat Unggahan**:
   - Halaman log riwayat batch upload file Excel (nama file, total baris, jumlah baris valid/error, mode, dan tanggal).
+- **F-11 Log & Analitik Pengecekan Nama (`/admin/search-logs`)**:
+  - 4 Stat Cards: Total Pengecekan, Nama Unik Dicek, Berhasil Ditemukan, Tidak Ditemukan.
+  - Tab Navigasi: Semua Log, Rekap Frekuensi Pencarian, dan Pencarian Tidak Ditemukan.
+  - Fitur Pencarian & Filter Tanggal (Start Date - End Date).
+  - Ekspor Laporan Log ke format CSV untuk analisis panitia.
 
 ---
 
 ## 5. Arsitektur & Keamanan Sistem
 
 ```
-[ Browser Publik ] ---> [ React SPA (Vite) ] ---> [ Supabase RPC: search_pemilih() ] ---> [ PostgreSQL (RLS ON) ]
-                                            ---> [ Supabase RPC: get_tps_summary() ]  /
-[ Browser Admin  ] ---> [ React SPA (/admin) ] -> [ Supabase Auth ]                   /
+[ Browser Publik ] ---> [ React SPA (Vite) ] ---> [ Edge Function / RPC: search_pemilih() ] ---> [ PostgreSQL (RLS ON) ]
+                                            ---> [ Supabase RPC: get_tps_summary() ]        /
+[ Browser Admin  ] ---> [ React SPA (/admin) ] -> [ Supabase Auth ]                         /
                                                 \-> [ Supabase Table CRUD (RLS Authenticated) ]
 ```
 
-### Standar Keamanan yang Diterapkan:
-1. **Row Level Security (RLS)**: Diaktifkan pada semua tabel (`pemilih`, `tps`, `upload_batches`, `admin_profiles`, `app_settings`).
-2. **Pencarian Aman via RPC Definer**: Publik hanya dapat mencari via fungsi `search_pemilih(q)` yang menyamarkan NIK di level database.
-3. **Penyimpanan Kredensial Aman**: File `.env` dan file mentah Excel diabaikan oleh `.gitignore` dan tidak di-push ke GitHub.
-4. **Validasi File Upload**: Pembatasan MIME type & ekstensi gambar untuk mencegah serangan *Stored XSS*.
+### Standar Keamanan & Performa yang Diterapkan:
+1. **Row Level Security (RLS)**: Diaktifkan pada semua tabel (`pemilih`, `tps`, `upload_batches`, `admin_profiles`, `app_settings`, `search_logs`).
+2. **Pencarian Aman via RPC Definer & CTE**: Publik hanya dapat mencari via fungsi `search_pemilih(q)` yang menyamarkan NIK di level database. Fungsi ini ditulis dengan Common Table Expression (CTE) agar bebas dari isu temp-table lock saat diakses bersamaan oleh ribuan warga secara serentak.
+3. **Penyimpanan Kredensial & Secrets**: File `.env` diabaikan oleh `.gitignore`. Edge Function menggunakan environment variable `ALLOWED_ORIGINS` untuk mengunci CORS origin secara dinamis di produksi.
+4. **Validasi File Upload & Input**: Pembatasan MIME type & ekstensi gambar untuk mencegah *Stored XSS*. Pembatasan panjang query pencarian maksimal 100 karakter.
 5. **Anti-Scraping**: Client-side throttle pada pencarian publik untuk melindungi data dari scraping massal.
+6. **Audit Keamanan Terverifikasi**: Skor Keamanan 97/100 (Bebas dari peretasan CORS wildcard dan login bypass).
 
 ---
 
@@ -187,12 +200,27 @@ create table public.app_settings (
   value       text,
   updated_at  timestamptz not null default now()
 );
+
+-- 5. Tabel Search Logs (Pencatatan Pengecekan DPT)
+create table public.search_logs (
+  id            uuid primary key default gen_random_uuid(),
+  query_raw     text not null,
+  query_clean   text not null,
+  search_type   text check (search_type in ('NAMA', 'NIK')) default 'NAMA',
+  is_found      boolean not null default false,
+  result_count  int not null default 0,
+  matched_nama  text,
+  tps_nomor     int,
+  created_at    timestamptz not null default now()
+);
 ```
 
 ### 6.2 RPC Functions Kunci
 
-- **`search_pemilih(q text)`**: Fungsi pencarian publik berjenis `SECURITY DEFINER` dengan penyamaran NIK otomatis.
+- **`search_pemilih(q text)`**: Fungsi pencarian publik `SECURITY DEFINER` berbasis CTE (Common Table Expression) dengan penyamaran NIK & pencatatan log otomatis ke `search_logs`.
 - **`get_tps_summary()`**: Fungsi rekapitulasi data TPS dan perhitungan pemilih aktif secara instan dan akurat.
+- **`get_search_stats()`**: Fungsi statistik agregat pencarian publik (total pengecekan, nama unik, ditemukan, tidak ditemukan).
+- **`get_search_name_frequency(only_not_found boolean)`**: Fungsi rekap frekuensi pencarian per nama unik untuk analisis panitia.
 
 ---
 
@@ -206,8 +234,9 @@ create table public.app_settings (
 /admin/upload          → Unggah File Excel DPT (.xlsx) & Preview
 /admin/data            → Kelola Data Pemilih (Tabel, CRUD, Hapus Semua Data)
 /admin/tps             → Kelola Tempat Pemungutan Suara (CRUD Lokasi TPS)
+/admin/search-logs     → Halaman Log & Analitik Pengecekan Nama (Search Logs)
 /admin/riwayat         → Riwayat Batch Upload File
-/admin/settings        → Pengaturan Logo & Favicon Web
+/admin/settings        → Pengaturan & Keamanan (Ganti Password, Logo & Favicon Web)
 ```
 
 ---
@@ -216,12 +245,17 @@ create table public.app_settings (
 
 - [x] Warga dapat mengecek NIK atau Nama dan mendapatkan hasil lokasi TPS secara akurat.
 - [x] NIK selalu disamarkan di sisi publik (UU PDP).
-- [x] Admin dapat login dengan aman via Supabase Auth.
+- [x] Pencarian warga otomatis dicatat ke tabel `search_logs` untuk analitik panitia.
+- [x] Fungsi database `search_pemilih()` teroptimasi menggunakan CTE untuk eksekusi serentak (concurrency) tinggi tanpa *table lock*.
+- [x] Admin dapat login dengan aman via Supabase Auth dan mengganti password langsung dari panel admin (`/admin/settings`).
+- [x] Admin dapat memantau log & analitik pengecekan warga di halaman `/admin/search-logs` lengkap dengan statistik & ekspor CSV.
 - [x] Admin dapat mengunggah file Excel DPT dengan deteksi header otomatis dan opsi batch upsert.
 - [x] Dashboard menampilkan data seluruh TPS (TPS 01 s/d 09+) dan statistik pemilih secara dinamis dari database.
 - [x] Fitur CRUD Lokasi TPS berfungsi penuh dan tersinkronisasi ke portal publik.
 - [x] Fitur Hapus Semua Data DPT dengan pengaman konfirmasi ganda berfungsi dengan baik.
 - [x] Fitur Upload Logo dan Favicon browser dinamis berfungsi penuh.
-- [x] Audit Keamanan: Bebas dari vulnerability paket (`found 0 vulnerabilities`) dan file kredensial `.env` terlindungi.
+- [x] Audit Keamanan Selesai (Skor 97/100): Perbaikan CORS dynamic whitelist di Edge Function & penutupan login bypass di production.
+- [x] Bebas dari vulnerability paket (`found 0 vulnerabilities`) dan file kredensial `.env` terlindungi.
 - [x] Desain responsif mobile-first diuji di layar 360px hingga layar monitor desktop.
 - [x] Seluruh kode sumber terkelola di repositori GitHub [theydoet666/cek_dpt_pilkel](https://github.com/theydoet666/cek_dpt_pilkel.git).
+66/cek_dpt_pilkel.git).
