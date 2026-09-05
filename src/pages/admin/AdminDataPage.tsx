@@ -64,6 +64,7 @@ const SAMPLE_DEMO_PEMILIH: Pemilih[] = [
 
 export const AdminDataPage: React.FC = () => {
   const [pemilihList, setPemilihList] = useState<Pemilih[]>([]);
+  const [tpsOptions, setTpsOptions] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal State Tambah / Edit
@@ -90,12 +91,24 @@ export const AdminDataPage: React.FC = () => {
       const isPlaceholder = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder');
       if (isPlaceholder) {
         setPemilihList(SAMPLE_DEMO_PEMILIH);
+        setTpsOptions([7, 8, 9]);
       } else {
+        // Fetch list TPS dari database
+        const { data: tpsData } = await supabase
+          .from('tps')
+          .select('nomor_tps')
+          .order('nomor_tps', { ascending: true });
+        
+        if (tpsData && tpsData.length > 0) {
+          setTpsOptions(tpsData.map((t) => t.nomor_tps));
+        }
+
         const { data, error } = await supabase
           .from('pemilih')
           .select('*')
           .eq('is_active', true)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .range(0, 49999);
 
         if (error) throw error;
         setPemilihList(data || []);
@@ -280,6 +293,7 @@ export const AdminDataPage: React.FC = () => {
         <DataTable
           data={pemilihList}
           loading={loading}
+          tpsOptions={tpsOptions}
           onAddClick={handleOpenAddModal}
           onEditClick={handleOpenEditModal}
           onDeleteClick={handleDelete}

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { Pemilih } from '../../lib/types';
 import { Button } from '../shared/Button';
-import { Search, Filter, Edit, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, Edit, Trash2, Plus, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 
 interface DataTableProps {
   data: Pemilih[];
@@ -10,6 +10,7 @@ interface DataTableProps {
   onEditClick: (item: Pemilih) => void;
   onDeleteClick: (item: Pemilih) => void;
   onDeleteAllClick?: () => void;
+  tpsOptions?: number[];
 }
 
 export const DataTable: React.FC<DataTableProps> = ({
@@ -19,12 +20,39 @@ export const DataTable: React.FC<DataTableProps> = ({
   onEditClick,
   onDeleteClick,
   onDeleteAllClick,
+  tpsOptions = [],
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTps, setSelectedTps] = useState<number | 'all'>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedAlamat, setSelectedAlamat] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+
+  // Dapatkan opsi TPS secara dinamis dari tpsOptions (database) & data pemilih
+  const availableTps = useMemo(() => {
+    const numbers = new Set<number>();
+    if (tpsOptions && tpsOptions.length > 0) {
+      tpsOptions.forEach((n) => numbers.add(n));
+    }
+    data.forEach((item) => {
+      if (item.tps_nomor !== null && item.tps_nomor !== undefined) {
+        numbers.add(item.tps_nomor);
+      }
+    });
+    return Array.from(numbers).sort((a, b) => a - b);
+  }, [tpsOptions, data]);
+
+  // Dapatkan opsi Alamat secara dinamis dari data pemilih
+  const availableAlamat = useMemo(() => {
+    const set = new Set<string>();
+    data.forEach((item) => {
+      if (item.alamat) {
+        const trimmed = item.alamat.trim();
+        if (trimmed) set.add(trimmed);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [data]);
 
   // Filter logic
   const filteredData = data.filter((item) => {
@@ -34,11 +62,11 @@ export const DataTable: React.FC<DataTableProps> = ({
       item.alamat.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesTps = selectedTps === 'all' || item.tps_nomor === selectedTps;
-    const matchesCategory =
-      selectedCategory === 'all' ||
-      (item.kategori_pemilih || '').toUpperCase() === selectedCategory.toUpperCase();
+    const matchesAlamat =
+      selectedAlamat === 'all' ||
+      (item.alamat || '').toLowerCase().includes(selectedAlamat.toLowerCase());
 
-    return matchesSearch && matchesTps && matchesCategory;
+    return matchesSearch && matchesTps && matchesAlamat;
   });
 
   // Pagination
@@ -69,6 +97,7 @@ export const DataTable: React.FC<DataTableProps> = ({
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* TPS Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
             <Filter className="w-3.5 h-3.5 text-slate-500" />
             <span className="text-slate-600 font-medium">TPS:</span>
@@ -81,27 +110,32 @@ export const DataTable: React.FC<DataTableProps> = ({
               className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
             >
               <option value="all">Semua TPS</option>
-              <option value={7}>TPS 7</option>
-              <option value={8}>TPS 8</option>
-              <option value={9}>TPS 9</option>
+              {availableTps.map((tpsNum) => (
+                <option key={tpsNum} value={tpsNum}>
+                  TPS {tpsNum}
+                </option>
+              ))}
             </select>
           </div>
 
+          {/* Alamat Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-slate-600 font-medium">Kategori:</span>
+            <MapPin className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-slate-600 font-medium">Alamat:</span>
             <select
-              value={selectedCategory}
+              value={selectedAlamat}
               onChange={(e) => {
-                setSelectedCategory(e.target.value);
+                setSelectedAlamat(e.target.value);
                 setCurrentPage(1);
               }}
-              className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-slate-900 font-bold focus:outline-none cursor-pointer max-w-[200px] truncate"
             >
-              <option value="all">Semua Kategori</option>
-              <option value="LOKAL">LOKAL</option>
-              <option value="BTN">BTN</option>
-              <option value="BTN KG">BTN KG</option>
-              <option value="TK">TK</option>
+              <option value="all">Semua Alamat</option>
+              {availableAlamat.map((alamat, idx) => (
+                <option key={idx} value={alamat}>
+                  {alamat}
+                </option>
+              ))}
             </select>
           </div>
 

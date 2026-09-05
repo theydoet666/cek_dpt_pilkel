@@ -50,6 +50,7 @@ export const AdminTpsPage: React.FC = () => {
   });
 
   const [exactTotalPemilih, setExactTotalPemilih] = useState<number>(0);
+  const [missingTpsNumbers, setMissingTpsNumbers] = useState<number[]>([]);
 
   const fetchTpsData = async () => {
     setLoading(true);
@@ -60,22 +61,29 @@ export const AdminTpsPage: React.FC = () => {
         setTpsList(INITIAL_TPS);
         setPemilihCounts({ 7: 420, 8: 380, 9: 510 });
         setExactTotalPemilih(1310);
+        setMissingTpsNumbers([]);
       } else {
+        // Exact total active voters count from DB
+        const { count: totalCount } = await supabase
+          .from('pemilih')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_active', true);
+
+        setExactTotalPemilih(totalCount || 0);
+
         // 1. Fetch TPS & Counts via RPC get_tps_summary
         let loadedTps = false;
+        let fetchedTpsList: any[] = [];
         try {
           const { data: summaryData, error: summaryErr } = await supabase.rpc('get_tps_summary');
           if (!summaryErr && summaryData && summaryData.length > 0) {
+            fetchedTpsList = summaryData;
             setTpsList(summaryData);
             const counts: Record<number, number> = {};
-            let total = 0;
             summaryData.forEach((item: any) => {
-              const c = Number(item.total_pemilih) || 0;
-              counts[item.nomor_tps] = c;
-              total += c;
+              counts[item.nomor_tps] = Number(item.total_pemilih) || 0;
             });
             setPemilihCounts(counts);
-            setExactTotalPemilih(total);
             loadedTps = true;
           }
         } catch {
@@ -90,32 +98,44 @@ export const AdminTpsPage: React.FC = () => {
             .order('nomor_tps', { ascending: true });
 
           if (tpsErr) throw tpsErr;
+          fetchedTpsList = tpsData || [];
           setTpsList(tpsData || []);
 
-          // Exact total active voters count
-          const { count: totalCount } = await supabase
-            .from('pemilih')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_active', true);
+          // Count per TPS accurately using exact count queries
+          if (tpsData && tpsData.length > 0) {
+            const counts: Record<number, number> = {};
+            for (const tpsItem of tpsData) {
+              const { count: tCount } = await supabase
+                .from('pemilih')
+                .select('*', { count: 'exact', head: true })
+                .eq('is_active', true)
+                .eq('tps_nomor', tpsItem.nomor_tps);
+              counts[tpsItem.nomor_tps] = tCount || 0;
+            }
+            setPemilihCounts(counts);
+          }
+        }
 
-          setExactTotalPemilih(totalCount || 0);
-
-          // Fetch counts per TPS (range up to 50,000 voters)
-          const { data: pemilihData } = await supabase
+        // Check if there are active voters with tps_nomor not registered in tps table
+        try {
+          const { data: activeTpsRows } = await supabase
             .from('pemilih')
             .select('tps_nomor')
             .eq('is_active', true)
-            .range(0, 50000);
+            .limit(1000);
 
-          if (pemilihData) {
-            const counts: Record<number, number> = {};
-            pemilihData.forEach((p: any) => {
-              if (p.tps_nomor !== null && p.tps_nomor !== undefined) {
-                counts[p.tps_nomor] = (counts[p.tps_nomor] || 0) + 1;
+          if (activeTpsRows && activeTpsRows.length > 0) {
+            const currentMasterTps = new Set(fetchedTpsList.map((t: any) => t.nomor_tps));
+            const unlisted = new Set<number>();
+            activeTpsRows.forEach((r: any) => {
+              if (r.tps_nomor !== null && r.tps_nomor !== undefined && !currentMasterTps.has(r.tps_nomor)) {
+                unlisted.add(r.tps_nomor);
               }
             });
-            setPemilihCounts(counts);
+            setMissingTpsNumbers(Array.from(unlisted).sort((a, b) => a - b));
           }
+        } catch {
+          // non-critical check
         }
       }
     } catch (err: any) {
@@ -287,6 +307,41 @@ export const AdminTpsPage: React.FC = () => {
             </Button>
           </div>
         </div>
+
+        {/* Banner Peringatan TPS Belum Terdaftar */}
+        {missingTpsNumbers.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-extrabold text-amber-900 text-sm">
+                  Terdeteksi TPS Belum Terdaftar di Master TPS
+                </h4>
+                <p className="text-xs text-amber-700 mt-1">
+                  Terdapat data pemilih aktif untuk <strong>TPS {missingTpsNumbers.join(', ')}</strong> yang belum terdaftar di tabel master lokasi TPS.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const nextMissing = missingTpsNumbers[0];
+                setEditingItem(null);
+                setFormData({
+                  nomor_tps: nextMissing,
+                  nama_lokasi: `Balai Banjar / Lokasi TPS ${nextMissing}`,
+                  alamat_lokasi: 'Desa Belega, Kec. Blahbatuh, Kab. Gianyar',
+                  dusun: '',
+                });
+                setIsModalOpen(true);
+              }}
+              className="bg-white border-amber-300 text-amber-900 hover:bg-amber-100 shrink-0 text-xs font-bold"
+            >
+              Tambah TPS {missingTpsNumbers[0]}
+            </Button>
+          </div>
+        )}
 
         {/* TPS List Section */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-md space-y-6">

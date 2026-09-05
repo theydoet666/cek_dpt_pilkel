@@ -80,20 +80,17 @@ export const AdminDashboardPage: React.FC = () => {
           if (tpsErr) throw tpsErr;
           setTpsList(tpsData || []);
 
-          // Fetch all active voters with tps_nomor
-          const { data: votersData } = await supabase
-            .from('pemilih')
-            .select('tps_nomor')
-            .eq('is_active', true)
-            .range(0, 50000);
-
-          if (votersData) {
+          // Count per TPS accurately using exact count queries
+          if (tpsData && tpsData.length > 0) {
             const counts: Record<number, number> = {};
-            votersData.forEach((row: any) => {
-              if (row.tps_nomor !== null && row.tps_nomor !== undefined) {
-                counts[row.tps_nomor] = (counts[row.tps_nomor] || 0) + 1;
-              }
-            });
+            for (const tpsItem of tpsData) {
+              const { count: tCount } = await supabase
+                .from('pemilih')
+                .select('*', { count: 'exact', head: true })
+                .eq('is_active', true)
+                .eq('tps_nomor', tpsItem.nomor_tps);
+              counts[tpsItem.nomor_tps] = tCount || 0;
+            }
             setPemilihCounts(counts);
           }
         }
